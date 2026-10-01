@@ -1,0 +1,27 @@
+# Lobby world
+lobby-world: "world"
+# Enable tips to let players get displayed tips periodically
+tips: true
+# If enabled, only worlds listed here will be included in HungerGames
+whitelist-worlds: false
+# Worlds that will be excluded from list
+ignored-worlds:
+  - "world_nether"
+  - "world_the_end"
+  # Add more worlds to exclude
+# Reset world, this restores the world to a previous state
+reset-world: false
+# Enable or disable players spectating on death, default is true, set to false to disable
+spectating: true
+# Allows the creation of custom teams
+custom-teams: false
+# Sets the default language if client language doesn't exist
+default-language: en_us
+# Database Settings, used for stats tracking
+# This requires the creation of a table called hungergames
+database:
+  enabled: false
+  url: "jdbc:mysql://localhost:3306/hungergames"
+  user: ""
+  password: ""
+  interval: 60 # Time in seconds after which data is saved to database
