@@ -1,6 +1,6 @@
 # Minimum and Maximum stacks of different items for regular chests
-min-chest-content: 3
-max-chest-content: 6
+min-chest-content: 5
+max-chest-content: 8
 # Minimum and Maximum stacks of different items for Barrels
 min-barrel-content: 4
 max-barrel-content: 7
@@ -14,8 +14,13 @@ min-supply-drop-content: 2
 max-supply-drop-content: 6
 # Players Per Team
 players-per-team: 1
-# Length of the game in seconds (default: 900), do not set to lower than 1
+# Seconds until deathmatch begins (default: 900), do not set to lower than 1
 game-time: 900
+# Survivors return to their original spawns and fight until one player/team remains.
+deathmatch:
+  protection-seconds: 5
+  # Instant, fixed border width. Enlarged if needed to contain every starting platform.
+  border-size: 30
 # Length of the countdown before game in seconds, use less than 5 for no countdown
 countdown: 20
 # Length of the grace period (time after which PvP is enabled) in seconds, use 0 for no grace period,(default: 30)
@@ -56,12 +61,6 @@ break-blocks:
 border:
   # Border size in blocks, use size bigger than arena for no border, (default: 700)
   size: 700
-  # Time in seconds after which border starts shrinking, use any time higher than game-time for no border, (default: 180)
-  start-time: 180
-  # Time in seconds after which border stops shrinking (default: 780)
-  end-time: 780
-  # Final border size in blocks, use size bigger than arena for no border, (default: 40)
-  final-size: 40
   # X and Z Coordinates of the center of the border, (default: 0, 0)
   center-x: 0
   center-z: 0

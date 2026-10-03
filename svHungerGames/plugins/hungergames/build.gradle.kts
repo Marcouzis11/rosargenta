@@ -26,6 +26,13 @@ dependencies {
     implementation("com.googlecode.json-simple:json-simple:1.1.1")
     implementation("fr.mrmicky:fastboard:2.1.5")
     compileOnly("me.clip:placeholderapi:2.11.6")
+    testImplementation("org.spigotmc:spigot-api:$spigotAPIVersion-R0.1-SNAPSHOT")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("org.mockito:mockito-core:5.15.2")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 val targetJavaVersion = 17

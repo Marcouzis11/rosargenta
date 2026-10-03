@@ -59,9 +59,11 @@ public class SaveWorldCommand implements CommandExecutor {
 
         assert world != null;
 
-        worldResetHandler.saveWorldState(world);
-
-        sender.sendMessage(langHandler.getMessage(player, "game.worldsaved", world.getName()));
+        if (!hgWorldNames.contains(world.getName())) { sender.sendMessage("§cEste mundo no es una arena."); return true; }
+        try {
+            worldResetHandler.saveWorldState(world);
+            sender.sendMessage("§eGuardando plantilla de " + world.getName() + ". La arena queda bloqueada hasta terminar.");
+        } catch (IllegalStateException e) { sender.sendMessage("§c" + e.getMessage()); }
 
         return true;
     }

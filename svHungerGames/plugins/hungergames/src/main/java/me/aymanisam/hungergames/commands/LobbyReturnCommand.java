@@ -82,6 +82,7 @@ public class LobbyReturnCommand implements CommandExecutor {
         World lobbyWorld = Bukkit.getWorld(lobbyWorldName);
 
         if (lobbyWorld != null) {
+            ParticipationHandler.leave(player, world);
             player.teleport(lobbyWorld.getSpawnLocation());
         } else {
             plugin.getLogger().log(Level.SEVERE, "Could not find lobbyWorld [ " + lobbyWorldName + "]");

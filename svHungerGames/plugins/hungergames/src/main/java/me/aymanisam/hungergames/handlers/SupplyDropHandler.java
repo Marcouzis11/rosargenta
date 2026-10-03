@@ -63,12 +63,26 @@ public class SupplyDropHandler {
         }
 
         ThreadLocalRandom random = ThreadLocalRandom.current();
+        boolean requireGlassRoof = config.isSet("supplydrop.require-glass-roof")
+                ? config.getBoolean("supplydrop.require-glass-roof")
+                : hasGlassRoof(world, border.getCenter().getBlockX(), border.getCenter().getBlockZ());
+        // A square border also includes corners outside a glass dome.
+        if (!config.isSet("supplydrop.require-glass-roof") && !requireGlassRoof) {
+            int offset = Math.max(1, (int) border.getSize() / 4);
+            int covered = 0;
+            int cx = border.getCenter().getBlockX(), cz = border.getCenter().getBlockZ();
+            for (int[] point : new int[][]{{cx - offset, cz}, {cx + offset, cz}, {cx, cz - offset}, {cx, cz + offset}}) {
+                if (point[0] >= minX && point[0] <= maxX && point[1] >= minZ && point[1] <= maxZ
+                        && hasGlassRoof(world, point[0], point[1])) covered++;
+            }
+            requireGlassRoof = covered >= 2;
+        }
         for (int i = 0; i < numSupplyDrops; i++) {
             int x = 0;
             int z = 0;
-            int highestY = -1;
+            Integer highestY = null;
             DropColumn previous = lastDropColumns.get(world.getUID());
-            for (int attempt = 0; attempt < 32; attempt++) {
+            for (int attempt = 0; attempt < 128; attempt++) {
                 x = random.nextInt(minX, maxX + 1);
                 z = random.nextInt(minZ, maxZ + 1);
                 if (previous != null && previous.x() == x && previous.z() == z) {
@@ -78,19 +92,19 @@ public class SupplyDropHandler {
                         z = z < maxZ ? z + 1 : minZ;
                     }
                 }
-                highestY = world.getHighestBlockYAt(x, z);
-                if (highestY >= -60) {
+                highestY = findLandingY(world, x, z, requireGlassRoof);
+                if (highestY != null) {
                     break;
                 }
             }
 
-            if (highestY < -60) {
+            if (highestY == null) {
                 if (previous != null && previous.x() >= minX && previous.x() <= maxX
                         && previous.z() >= minZ && previous.z() <= maxZ
-                        && world.getHighestBlockYAt(previous.x(), previous.z()) >= -60) {
+                        && findLandingY(world, previous.x(), previous.z(), requireGlassRoof) != null) {
                     x = previous.x();
                     z = previous.z();
-                    highestY = world.getHighestBlockYAt(x, z);
+                    highestY = findLandingY(world, x, z, requireGlassRoof);
                     plugin.getLogger().warning("Supply drop reused its previous column because no other suitable ground was found in world " + world.getName());
                 } else {
                     plugin.getLogger().warning("Supply drop skipped: no suitable ground found inside the arena and border in world " + world.getName());
@@ -141,5 +155,38 @@ public class SupplyDropHandler {
                 player.sendMessage(langHandler.getMessage(player, "supplydrop.spawned", message));
             }
         }
+    }
+
+    static Integer findLandingY(World world, int x, int z) {
+        return findLandingY(world, x, z, false);
+    }
+
+    private static boolean isGlass(Material material) {
+        return material == Material.GLASS || material == Material.TINTED_GLASS
+                || material.name().endsWith("_STAINED_GLASS");
+    }
+
+    static boolean hasGlassRoof(World world, int x, int z) {
+        for (int y = Math.min(world.getHighestBlockYAt(x, z), world.getMaxHeight() - 1); y >= world.getMinHeight(); y--) {
+            if (isGlass(world.getBlockAt(x, y, z).getType())) return true;
+        }
+        return false;
+    }
+
+    static Integer findLandingY(World world, int x, int z, boolean requireGlassRoof) {
+        int top = Math.min(world.getHighestBlockYAt(x, z), world.getMaxHeight() - 1);
+        boolean belowGlass = false;
+        for (int y = top; y >= world.getMinHeight(); y--) {
+            Material surface = world.getBlockAt(x, y, z).getType();
+            if (isGlass(surface)) {
+                belowGlass = true;
+                continue;
+            }
+            if (y > world.getMaxHeight() - 3 || (requireGlassRoof && !belowGlass)) continue;
+            if (surface != Material.GRASS_BLOCK) continue;
+            if (world.getBlockAt(x, y + 1, z).getType().isAir()
+                    && world.getBlockAt(x, y + 2, z).getType().isAir()) return y;
+        }
+        return null;
     }
 }

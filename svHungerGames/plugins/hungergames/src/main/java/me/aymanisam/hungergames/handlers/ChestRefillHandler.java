@@ -63,6 +63,9 @@ public class ChestRefillHandler {
         refillInventory(chestLocations, "chest-items", itemsConfig, minChestContent, maxChestContent);
         refillInventory(barrelLocations, "barrel-items", itemsConfig, minBarrelContent, maxBarrelContent);
         refillInventory(trappedChestLocations, "trapped-chest-items", itemsConfig, minTrappedChestContent, maxTrappedChestContent);
+        refillInventory(deserializeLocations(chestLocationsConfig, "ender-chests-locations"),
+                itemsConfig.contains("ender-chest-items") ? "ender-chest-items" : "trapped-chest-items",
+                itemsConfig, minTrappedChestContent, maxTrappedChestContent);
 
         for (Player player : world.getPlayers()) {
             player.sendMessage(langHandler.getMessage(player, "chestrefill.refilled"));
@@ -79,13 +82,20 @@ public class ChestRefillHandler {
 
     @SuppressWarnings("unchecked")
     public void refillInventory(List<Location> locations, String itemKey, YamlConfiguration itemsConfig, int minContent, int maxContent) {
-	    Random rand = new Random();
+        refillInventory(locations, itemKey, itemsConfig, minContent, maxContent, new Random());
+    }
 
+    @SuppressWarnings("unchecked")
+    void refillInventory(List<Location> locations, String itemKey, YamlConfiguration itemsConfig, int minContent, int maxContent, Random rand) {
+        Set<ChestIdentity> filledChests = new HashSet<>();
 	    for (Location location : locations) {
             Block block = location.getBlock();
             Inventory blockInventory;
 
-            if (block.getState() instanceof Chest chest) {
+            if (block.getType() == Material.ENDER_CHEST) {
+                blockInventory = EnderLootHandler.inventoryAt(location);
+            } else if (block.getState() instanceof Chest chest) {
+                if (!filledChests.add(ChestIdentity.of(chest, location))) continue;
                 blockInventory = chest.getInventory();
             } else if (block.getState() instanceof Barrel barrel) {
                 blockInventory = barrel.getInventory();
@@ -99,132 +109,10 @@ public class ChestRefillHandler {
 
             assert itemsMapList != null;
             List<ItemStack> items = itemsMapList.stream()
+                    .filter(itemMap -> !itemMap.containsKey("chance"))
                     .flatMap(itemMap -> {
-                        String type = (String) itemMap.get("type");
-
-                        Object amountObj = itemMap.get("amount");
-
-						int amount;
-						if (amountObj instanceof Map) {
-							int minAmount = (int) ((Map<?, ?>) amountObj).get("min");
-							int maxAmount = (int) ((Map<?, ?>) amountObj).get("max");
-							amount = rand.nextInt(maxAmount - minAmount) + minAmount;
-						} else {
-							amount = (amountObj != null) ? (Integer) amountObj : 1;
-						}
-
-                        Integer weightObj = (Integer) itemMap.get("weight");
-                        int weight = (weightObj != null) ? weightObj : 1;
-
-                        ItemStack item;
-
-                        if (type.equals("POTION") || type.equals("SPLASH_POTION") || type.equals("LINGERING_POTION") || type.equals("TIPPED_ARROW")) {
-                            item = new ItemStack(Objects.requireNonNull(Material.getMaterial(type)), amount);
-                            PotionMeta potionMeta = (PotionMeta) item.getItemMeta();
-                            String potionType = (String) itemMap.get("potion-type");
-                            Integer levelObj = (Integer) itemMap.get("level");
-                            int level = (levelObj != null) ? levelObj : 1;
-                            boolean extended = itemMap.containsKey("extended") && (boolean) itemMap.get("extended");
-                            assert potionMeta != null;
-                            potionMeta.setBasePotionData(new PotionData(PotionType.valueOf(potionType), extended, level > 1));
-                            item.setItemMeta(potionMeta);
-                        } else if (itemMap.containsKey("enchantments")) {
-                            Material material = Material.getMaterial(type);
-                            assert material != null;
-                            item = new ItemStack(material, amount);
-                            Object enchantsObj = itemMap.get("enchantments");
-                            if (enchantsObj instanceof List<?> enchantList) {
-                                for (Object enchantObj : enchantList) {
-                                    if (enchantObj instanceof Map<?, ?> enchantMap) {
-                                        String enchantmentType = (String) enchantMap.get("type");
-                                        int level = (int) enchantMap.get("level");
-                                        Enchantment enchantment = Enchantment.getByKey(NamespacedKey.minecraft(enchantmentType.toLowerCase()));
-                                        if (enchantment != null) {
-                                            if (material == Material.ENCHANTED_BOOK) {
-                                                EnchantmentStorageMeta enchantmentStorageMeta = (EnchantmentStorageMeta) item.getItemMeta();
-                                                assert enchantmentStorageMeta != null;
-                                                enchantmentStorageMeta.addStoredEnchant(enchantment, level, true);
-                                                item.setItemMeta(enchantmentStorageMeta);
-                                            } else {
-                                                item.addUnsafeEnchantment(enchantment, level);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else if (type.equals("FIREWORK_ROCKET")) {
-                            item = new ItemStack(Material.FIREWORK_ROCKET, amount);
-                            FireworkMeta fireworkMeta = (FireworkMeta) item.getItemMeta();
-                            assert fireworkMeta != null;
-                            fireworkMeta.setPower((Integer) itemMap.get("power"));
-
-                            List<Map<?, ?>> effectsList = (List<Map<?, ?>>) itemMap.get("effects");
-                            for (Map<?, ?> effectMap : effectsList) {
-                                FireworkEffect.Type effectType = FireworkEffect.Type.valueOf((String) effectMap.get("type"));
-                                List<Color> colors = ((List<String>) effectMap.get("colors")).stream().map(this::getColorByName).collect(Collectors.toList());
-                                List<Color> fadeColors = ((List<String>) effectMap.get("fade-colors")).stream().map(this::getColorByName).collect(Collectors.toList());
-                                boolean flicker = (boolean) effectMap.get("flicker");
-                                boolean trail = (boolean) effectMap.get("trail");
-
-                                FireworkEffect effect = FireworkEffect.builder()
-                                        .with(effectType)
-                                        .withColor(colors)
-                                        .withFade(fadeColors)
-                                        .flicker(flicker)
-                                        .trail(trail)
-                                        .build();
-
-                                fireworkMeta.addEffect(effect);
-                            }
-
-                            item.setItemMeta(fireworkMeta);
-                        } else {
-                            Material material = Material.getMaterial(type);
-                            assert material != null;
-                            item = new ItemStack(material, amount);
-                        }
-
-                        if (itemMap.containsKey("nbt")) {
-                            Map<String, Object> nbtData = (Map<String, Object>) itemMap.get("nbt");
-                            ItemMeta itemMeta = item.getItemMeta();
-                            assert itemMeta != null;
-                            PersistentDataContainer dataContainer = itemMeta.getPersistentDataContainer();
-
-                            for (Map.Entry<String, Object> entry : nbtData.entrySet()) {
-                                String key = entry.getKey();
-                                Object value = entry.getValue();
-
-                                NamespacedKey namespacedKey = new NamespacedKey(plugin, key);
-
-                                if (value instanceof String) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.STRING, (String) value);
-                                } else if (value instanceof Integer) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.INTEGER, (Integer) value);
-                                } else if (value instanceof Double) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.DOUBLE, (Double) value);
-                                } else if (value instanceof Byte) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.BYTE, (Byte) value);
-                                } else if (value instanceof Long) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.LONG, (Long) value);
-                                } else if (value instanceof Float) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.FLOAT, (Float) value);
-                                } else if (value instanceof Short) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.SHORT, (Short) value);
-                                } else if (value instanceof byte[]) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.BYTE_ARRAY, (byte[]) value);
-                                } else if (value instanceof int[]) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.INTEGER_ARRAY, (int[]) value);
-                                } else if (value instanceof long[]) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.LONG_ARRAY, (long[]) value);
-                                } else if (value instanceof List) {
-                                    dataContainer.set(namespacedKey, PersistentDataType.STRING, value.toString());
-                                }
-                            }
-
-                            item.setItemMeta(itemMeta);
-                        }
-
-                        return Collections.nCopies(weight, item).stream();
+                        int weight = itemMap.get("weight") instanceof Number value ? value.intValue() : 1;
+                        return Collections.nCopies(weight, createItem(itemMap, rand)).stream();
                     })
                     .collect(Collectors.toList());
 
@@ -232,9 +120,18 @@ public class ChestRefillHandler {
 
 
             int inventorySize = rand.nextInt(maxContent - minContent + 1) + minContent;
-            Collections.shuffle(items);
+            Collections.shuffle(items, rand);
 
             inventorySize = Math.min(inventorySize, items.size());
+            items = "chest-items".equals(itemKey) && itemsConfig.getBoolean("ensure-weapon-and-food", true)
+                    ? balancedSelection(items, inventorySize) : new ArrayList<>(items.subList(0, inventorySize));
+            // Percent chances are rolled once per container, independently of weighted loot.
+            for (Map<?, ?> itemMap : itemsMapList) {
+                if (itemMap.containsKey("chance") && rollChance(itemMap, rand)) {
+                    items.add(createItem(itemMap, rand));
+                }
+            }
+            inventorySize = Math.min(items.size(), blockInventory.getSize());
 
             int addedItems = 0;
             int totalSlots = blockInventory.getSize();
@@ -247,6 +144,159 @@ public class ChestRefillHandler {
                 }
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    ItemStack createItem(Map<?, ?> itemMap, Random rand) {
+        String type = (String) itemMap.get("type");
+
+        int amount = rollAmount(itemMap, rand);
+
+        ItemStack item;
+
+        if (type.equals("POTION") || type.equals("SPLASH_POTION") || type.equals("LINGERING_POTION") || type.equals("TIPPED_ARROW")) {
+            item = new ItemStack(Objects.requireNonNull(Material.getMaterial(type)), amount);
+            PotionMeta potionMeta = (PotionMeta) item.getItemMeta();
+            String potionType = (String) itemMap.get("potion-type");
+            Integer levelObj = (Integer) itemMap.get("level");
+            int level = (levelObj != null) ? levelObj : 1;
+            boolean extended = itemMap.containsKey("extended") && (boolean) itemMap.get("extended");
+            assert potionMeta != null;
+            potionMeta.setBasePotionData(new PotionData(PotionType.valueOf(potionType), extended, level > 1));
+            item.setItemMeta(potionMeta);
+        } else if (itemMap.containsKey("enchantments") || itemMap.containsKey("random-enchantments")) {
+            Material material = Material.getMaterial(type);
+            assert material != null;
+            item = new ItemStack(material, amount);
+            Object enchantsObj = itemMap.get("enchantments");
+            if (itemMap.get("random-enchantments") instanceof List<?> options && !options.isEmpty()) {
+                enchantsObj = List.of(options.get(rand.nextInt(options.size())));
+            }
+            if (enchantsObj instanceof List<?> enchantList) {
+                for (Object enchantObj : enchantList) {
+                    if (enchantObj instanceof Map<?, ?> enchantMap) {
+                        String enchantmentType = (String) enchantMap.get("type");
+                        int level = (int) enchantMap.get("level");
+                        Enchantment enchantment = Enchantment.getByKey(NamespacedKey.minecraft(enchantmentType.toLowerCase()));
+                        if (enchantment != null) {
+                            if (material == Material.ENCHANTED_BOOK) {
+                                EnchantmentStorageMeta enchantmentStorageMeta = (EnchantmentStorageMeta) item.getItemMeta();
+                                assert enchantmentStorageMeta != null;
+                                enchantmentStorageMeta.addStoredEnchant(enchantment, level, true);
+                                item.setItemMeta(enchantmentStorageMeta);
+                            } else {
+                                item.addUnsafeEnchantment(enchantment, level);
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (type.equals("FIREWORK_ROCKET")) {
+            item = new ItemStack(Material.FIREWORK_ROCKET, amount);
+            FireworkMeta fireworkMeta = (FireworkMeta) item.getItemMeta();
+            assert fireworkMeta != null;
+            fireworkMeta.setPower((Integer) itemMap.get("power"));
+
+            List<Map<?, ?>> effectsList = (List<Map<?, ?>>) itemMap.get("effects");
+            for (Map<?, ?> effectMap : effectsList) {
+                FireworkEffect.Type effectType = FireworkEffect.Type.valueOf((String) effectMap.get("type"));
+                List<Color> colors = ((List<String>) effectMap.get("colors")).stream().map(this::getColorByName).collect(Collectors.toList());
+                List<Color> fadeColors = ((List<String>) effectMap.get("fade-colors")).stream().map(this::getColorByName).collect(Collectors.toList());
+                boolean flicker = (boolean) effectMap.get("flicker");
+                boolean trail = (boolean) effectMap.get("trail");
+
+                FireworkEffect effect = FireworkEffect.builder()
+                        .with(effectType)
+                        .withColor(colors)
+                        .withFade(fadeColors)
+                        .flicker(flicker)
+                        .trail(trail)
+                        .build();
+
+                fireworkMeta.addEffect(effect);
+            }
+
+            item.setItemMeta(fireworkMeta);
+        } else {
+            Material material = Material.getMaterial(type);
+            assert material != null;
+            item = new ItemStack(material, amount);
+        }
+
+        if (itemMap.containsKey("nbt")) {
+            Map<String, Object> nbtData = (Map<String, Object>) itemMap.get("nbt");
+            ItemMeta itemMeta = item.getItemMeta();
+            assert itemMeta != null;
+            PersistentDataContainer dataContainer = itemMeta.getPersistentDataContainer();
+
+            for (Map.Entry<String, Object> entry : nbtData.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+
+                NamespacedKey namespacedKey = new NamespacedKey(plugin, key);
+
+                if (value instanceof String) {
+                    dataContainer.set(namespacedKey, PersistentDataType.STRING, (String) value);
+                } else if (value instanceof Integer) {
+                    dataContainer.set(namespacedKey, PersistentDataType.INTEGER, (Integer) value);
+                } else if (value instanceof Double) {
+                    dataContainer.set(namespacedKey, PersistentDataType.DOUBLE, (Double) value);
+                } else if (value instanceof Byte) {
+                    dataContainer.set(namespacedKey, PersistentDataType.BYTE, (Byte) value);
+                } else if (value instanceof Long) {
+                    dataContainer.set(namespacedKey, PersistentDataType.LONG, (Long) value);
+                } else if (value instanceof Float) {
+                    dataContainer.set(namespacedKey, PersistentDataType.FLOAT, (Float) value);
+                } else if (value instanceof Short) {
+                    dataContainer.set(namespacedKey, PersistentDataType.SHORT, (Short) value);
+                } else if (value instanceof byte[]) {
+                    dataContainer.set(namespacedKey, PersistentDataType.BYTE_ARRAY, (byte[]) value);
+                } else if (value instanceof int[]) {
+                    dataContainer.set(namespacedKey, PersistentDataType.INTEGER_ARRAY, (int[]) value);
+                } else if (value instanceof long[]) {
+                    dataContainer.set(namespacedKey, PersistentDataType.LONG_ARRAY, (long[]) value);
+                } else if (value instanceof List) {
+                    dataContainer.set(namespacedKey, PersistentDataType.STRING, value.toString());
+                }
+            }
+
+            item.setItemMeta(itemMeta);
+        }
+
+        return item;
+    }
+
+    static int rollAmount(Map<?, ?> itemMap, Random random) {
+        Object amount = itemMap.get("amount");
+        if (amount instanceof Map<?, ?> range) {
+            int min = ((Number) range.get("min")).intValue();
+            int max = ((Number) range.get("max")).intValue();
+            return min + random.nextInt(max - min + 1);
+        }
+        return amount instanceof Number number ? number.intValue() : 1;
+    }
+
+    static List<ItemStack> balancedSelection(List<ItemStack> available, int count) {
+        List<ItemStack> selected = new ArrayList<>();
+        if (count == 0) return selected;
+        ItemStack weapon = available.stream().filter(item -> item.getType().name().endsWith("_SWORD")
+                || item.getType().name().endsWith("_AXE")).findFirst().orElse(null);
+        ItemStack food = available.stream().filter(item -> item.getType().isEdible()).findFirst().orElse(null);
+        if (weapon != null) selected.add(weapon);
+        if (food != null && selected.size() < count) selected.add(food);
+        for (ItemStack item : available) {
+            if (selected.size() >= count) break;
+            if (item == weapon || item == food) continue;
+            selected.add(item);
+        }
+        // Weighted copies can refer to the same stack; preserve the requested amount.
+        for (ItemStack item : available) { if (selected.size() >= count) break; selected.add(item); }
+        return selected;
+    }
+
+    static boolean rollChance(Map<?, ?> itemMap, Random random) {
+        double chance = ((Number) itemMap.get("chance")).doubleValue();
+        return random.nextDouble() * 100.0 < chance;
     }
 
     public Color getColorByName(String colorName) {

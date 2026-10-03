@@ -40,6 +40,7 @@ public class ArenaSelectCommand implements CommandExecutor {
         List<String> lore = new ArrayList<>();
         lore.add(langHandler.getMessage(player, "arena.stick-left"));
         lore.add(langHandler.getMessage(player, "arena.stick-right"));
+        lore.add("§7Solo X/Z. Altura automática.");
         meta.setLore(lore);
         arenaSelector.setItemMeta(meta);
 

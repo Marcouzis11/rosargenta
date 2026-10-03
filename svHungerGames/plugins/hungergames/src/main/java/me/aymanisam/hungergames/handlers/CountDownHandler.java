@@ -40,6 +40,17 @@ public class CountDownHandler {
     }
 
     public void startCountDown(World world) {
+        List<String> errors = new ArenaValidationHandler(plugin).validate(world,
+                org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
+                        new java.io.File(plugin.getDataFolder(), world.getName() + "/setspawn.yml")).getStringList("spawnpoints"),
+                Math.max(plugin.getConfigHandler().getWorldConfig(world).getInt("min-players"),
+                        spawnPointMap.getOrDefault(world.getName(), Map.of()).size()));
+        if (!errors.isEmpty()) {
+            gameStarting.put(world.getName(), false);
+            for (Player player : world.getPlayers()) player.sendMessage("§cNo se puede iniciar: " + String.join(" | ", errors));
+            plugin.getLogger().warning("Arena " + world.getName() + ": " + String.join(" | ", errors));
+            return;
+        }
         List<BukkitTask> worldCountDownTasks = countDownTasks.computeIfAbsent(world.getName(), k -> new ArrayList<>());
         List<BukkitTask> worldAutoStartTasks = autoStartTasks.computeIfAbsent(world.getName(), k -> new ArrayList<>());
 
@@ -114,7 +125,12 @@ public class CountDownHandler {
         int countDownDuration = configHandler.getWorldConfig(world).getInt("countdown");
 
         worldCountDownTasks.add(plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (configHandler.getPluginSettings().getInt("players-per-team") != 1) {
+            if (playersAlive.getOrDefault(world.getName(), List.of()).size() < configHandler.getWorldConfig(world).getInt("min-players")) {
+                cancelCountDown(world);
+                for (Player player : world.getPlayers()) player.sendMessage("§cCuenta regresiva cancelada: faltan jugadores.");
+                return;
+            }
+            if (configHandler.getWorldConfig(world).getInt("players-per-team", 1) != 1) {
                 teamsHandler.createTeam(world, configHandler.getPluginSettings().getBoolean("custom-teams"));
             }
             this.gameSequenceHandler.startGame(world);

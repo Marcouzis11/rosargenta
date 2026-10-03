@@ -12,7 +12,7 @@ public class ResetPlayerHandler {
         player.setGameMode(GameMode.ADVENTURE);
         player.setHealth(20);
         player.setFoodLevel(20);
-        player.setSaturation(20);
+        player.setSaturation(5);
         player.getInventory().clear();
         player.setExp(0);
         player.setLevel(0);

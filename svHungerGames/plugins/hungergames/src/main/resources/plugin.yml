@@ -13,6 +13,9 @@ commands:
     description: "Main command for HungerGames"
     usage: /<command> <subcommand> [args]
 permissions:
+  hungergames.config:
+    description: "Permite configurar y validar arenas y botin"
+    default: op
   hungergames.join:
     description: "Allows you to join the game in HungerGames"
     default: true

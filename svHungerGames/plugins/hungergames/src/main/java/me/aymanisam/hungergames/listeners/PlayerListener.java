@@ -9,7 +9,9 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
@@ -37,6 +39,7 @@ public class PlayerListener implements Listener {
     private final ResetPlayerHandler resetPlayerHandler;
 
 	private final Map<String, Map<Player, Location>> deathLocations = new HashMap<>();
+    private final Map<UUID, String> respawnArenas = new HashMap<>();
     private final Map<Player, Set<Player>> playerDamagers = new HashMap<>();
     public static final Map<String, Map<Player, Integer>> playerKills = new HashMap<>();
 
@@ -60,8 +63,8 @@ public class PlayerListener implements Listener {
         List<Player> worldPlayersPlacement = playerPlacements.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
 
         if (gameStarted.getOrDefault(player.getWorld().getName(), false) || gameStarting.getOrDefault(player.getWorld().getName(), false)) {
-            worldPlayersAlive.remove(player);
-            if (configHandler.getWorldConfig(player.getWorld()).getInt("players-per-team") == 1) {
+            boolean wasAlive = worldPlayersAlive.remove(player);
+            if (wasAlive && !celebratingWorlds.contains(player.getWorld().getName()) && configHandler.getWorldConfig(player.getWorld()).getInt("players-per-team") == 1) {
                 worldPlayersPlacement.add(player);
             }
         } else {
@@ -137,6 +140,15 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         List<Player> worldPlayersWaiting = setSpawnHandler.playersWaiting.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
 
+        if (preparingDeathmatchWorlds.contains(player.getWorld().getName()) && player.getGameMode() != GameMode.SPECTATOR) {
+            Location to = event.getTo(), from = event.getFrom();
+            if (to != null && (to.getX() != from.getX() || to.getY() != from.getY() || to.getZ() != from.getZ())) {
+                Location frozen = from.clone();
+                frozen.setYaw(to.getYaw()); frozen.setPitch(to.getPitch());
+                event.setTo(frozen);
+            }
+            return;
+        }
         if (worldPlayersWaiting.contains(player)) {
             Location from = event.getFrom();
             Location to = event.getTo();
@@ -157,7 +169,11 @@ public class PlayerListener implements Listener {
         assert lobbyWorldName != null;
         World lobbyWorld = Bukkit.getWorld(lobbyWorldName);
         if (lobbyWorld != null) {
+            if (hgWorldNames.contains(player.getWorld().getName())) resetPlayerHandler.resetPlayer(player);
             player.teleport(lobbyWorld.getSpawnLocation());
+            if (player.getGameMode() == GameMode.SPECTATOR) {
+                player.setGameMode(GameMode.ADVENTURE);
+            }
         } else {
             plugin.getLogger().log(Level.SEVERE, "Could not find lobbyWorld [ " + lobbyWorldName + "]");
         }
@@ -198,6 +214,7 @@ public class PlayerListener implements Listener {
         List<Player> worldPlayersPlacement = playerPlacements.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
 
         if (gameStarted.getOrDefault(world.getName(), false) || gameStarting.getOrDefault(world.getName(), false)) {
+            respawnArenas.put(player.getUniqueId(), world.getName());
             worldPlayersAlive.remove(player);
             if (configHandler.getWorldConfig(world).getInt("players-per-team") == 1) {
                 worldPlayersPlacement.add(player);
@@ -301,13 +318,36 @@ public class PlayerListener implements Listener {
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
 
-	    if (isInIgnoredWorld(player.getWorld().getName())) return;
-
-        Map<Player, Location> worldDeathLocations = deathLocations.computeIfAbsent(player.getWorld().getName(), k -> new HashMap<>());
+        String pendingArena = respawnArenas.remove(player.getUniqueId());
+        String arenaName = pendingArena != null ? pendingArena : player.getWorld().getName();
+        if (isInIgnoredWorld(arenaName)) return;
+        Map<Player, Location> worldDeathLocations = deathLocations.computeIfAbsent(arenaName, k -> new HashMap<>());
+        boolean eliminated = pendingArena != null || worldDeathLocations.containsKey(player);
+        boolean active = gameStarted.getOrDefault(arenaName, false);
+        if (eliminated && (!active || !configHandler.getPluginSettings().getBoolean("spectating"))) {
+            World lobby = plugin.getServer().getWorld(configHandler.getPluginSettings().getString("lobby-world", "world"));
+            if (lobby != null) {
+                worldDeathLocations.remove(player);
+                event.setRespawnLocation(lobby.getSpawnLocation());
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) return;
+                    resetPlayerHandler.resetPlayer(player);
+                    player.teleport(lobby.getSpawnLocation());
+                    new ScoreBoardHandler(plugin, langHandler).removeScoreboard(player);
+                });
+                return;
+            }
+            plugin.getLogger().warning("Cannot return eliminated player to lobby: configured lobby world is not loaded.");
+        }
 
         if (worldDeathLocations.containsKey(player)) {
             event.setRespawnLocation(worldDeathLocations.get(player));
             worldDeathLocations.remove(player);
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline() && gameStarted.getOrDefault(arenaName, false)) {
+                    player.setGameMode(GameMode.SPECTATOR);
+                }
+            });
         }
     }
 
@@ -327,10 +367,88 @@ public class PlayerListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (hgWorldNames.contains(event.getBlock().getWorld().getName())
+                && event.getPlayer().getGameMode() != GameMode.CREATIVE) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPortableCrafting(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        if (!gameStarted.getOrDefault(player.getWorld().getName(), false)
+                || celebratingWorlds.contains(player.getWorld().getName())
+                || !playersAlive.getOrDefault(player.getWorld().getName(), Collections.emptyList()).contains(player)) return;
+        if (event.getItem() != null && event.getItem().getType() == Material.CRAFTING_TABLE
+                && (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK)) {
+            event.setCancelled(true);
+            player.openWorkbench(null, true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaExit(PlayerChangedWorldEvent event) {
+        if (!hgWorldNames.contains(event.getFrom().getName())) return;
+        ParticipationHandler.leave(event.getPlayer(), event.getFrom());
+        setSpawnHandler.removePlayerFromSpawnPoint(event.getPlayer(), event.getFrom());
+        setSpawnHandler.playersWaiting.getOrDefault(event.getFrom().getName(), new ArrayList<>()).remove(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBusyArenaTeleport(PlayerTeleportEvent event) {
+        Location target = event.getTo();
+        if (target != null && target.getWorld() != null && WorldResetHandler.busyWorlds.contains(target.getWorld().getName())) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage("§eLa arena se está preparando. Esperá unos segundos.");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onEnderLoot(PlayerInteractEvent event) {
+        Block block = event.getClickedBlock();
+        if (block == null || block.getType() != Material.ENDER_CHEST || !hgWorldNames.contains(block.getWorld().getName())) return;
+        event.setCancelled(true);
+        Player player = event.getPlayer();
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND
+                || player.getGameMode() == GameMode.SPECTATOR || !gameStarted.getOrDefault(block.getWorld().getName(), false)
+                || !playersAlive.getOrDefault(block.getWorld().getName(), List.of()).contains(player)) return;
+        if (event.getItem() != null && event.getItem().getType() == Material.CRAFTING_TABLE) return;
+        org.bukkit.inventory.Inventory loot = EnderLootHandler.existingAt(block.getLocation());
+        if (loot != null) player.openInventory(loot);
+        else player.sendMessage("§eEste cofre no está registrado. Un administrador debe ejecutar /hg scanarena.");
+    }
+
+    @EventHandler
+    public void onSpectatorInventory(org.bukkit.event.inventory.InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player && hgWorldNames.contains(player.getWorld().getName())
+                && player.getGameMode() == GameMode.SPECTATOR) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onSpectatorDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        if (event.getWhoClicked() instanceof Player player && hgWorldNames.contains(player.getWorld().getName())
+                && player.getGameMode() == GameMode.SPECTATOR) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onCelebrationDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player && (celebratingWorlds.contains(event.getEntity().getWorld().getName())
+                || preparingDeathmatchWorlds.contains(event.getEntity().getWorld().getName()))) {
+            event.setCancelled(true);
+        }
+    }
+
     @EventHandler
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         Entity damager = event.getDamager();
         Entity damaged = event.getEntity();
+        if (damaged instanceof Player && (celebratingWorlds.contains(damaged.getWorld().getName())
+                || preparingDeathmatchWorlds.contains(damaged.getWorld().getName()))) {
+            event.setCancelled(true);
+            return;
+        }
 
 	    if (isInIgnoredWorld(damager.getWorld().getName())) return;
 

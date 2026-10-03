@@ -34,11 +34,15 @@ public class ArenaSelectListener implements Listener {
                 return;
             }
             if (event.getAction() == Action.LEFT_CLICK_BLOCK) {
-                player.sendMessage(langHandler.getMessage(player, "setspawn.first-pos", Objects.requireNonNull(event.getClickedBlock()).getX(), event.getClickedBlock().getY(), event.getClickedBlock().getZ()));
-                player.setMetadata("arena_pos1", new FixedMetadataValue(plugin, event.getClickedBlock().getLocation()));
+                org.bukkit.Location corner = Objects.requireNonNull(event.getClickedBlock()).getLocation();
+                corner.setY(player.getWorld().getMinHeight());
+                player.sendMessage(langHandler.getMessage(player, "setspawn.first-pos", corner.getBlockX(), "altura automática", corner.getBlockZ()));
+                player.setMetadata("arena_pos1", new FixedMetadataValue(plugin, corner));
             } else if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                player.sendMessage(langHandler.getMessage(player, "setspawn.second-pos", Objects.requireNonNull(event.getClickedBlock()).getX(), event.getClickedBlock().getY(), event.getClickedBlock().getZ()));
-                player.setMetadata("arena_pos2", new FixedMetadataValue(plugin, event.getClickedBlock().getLocation()));
+                org.bukkit.Location corner = Objects.requireNonNull(event.getClickedBlock()).getLocation();
+                corner.setY(player.getWorld().getMaxHeight() - 1);
+                player.sendMessage(langHandler.getMessage(player, "setspawn.second-pos", corner.getBlockX(), "altura automática", corner.getBlockZ()));
+                player.setMetadata("arena_pos2", new FixedMetadataValue(plugin, corner));
             }
             event.setCancelled(true);
         }

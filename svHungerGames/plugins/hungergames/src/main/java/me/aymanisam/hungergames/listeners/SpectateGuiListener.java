@@ -1,51 +1,37 @@
 package me.aymanisam.hungergames.listeners;
 
-import me.aymanisam.hungergames.handlers.LangHandler;
-import org.bukkit.Bukkit;
-import org.bukkit.Material;
-import org.bukkit.Sound;
+import me.aymanisam.hungergames.handlers.*;
+import org.bukkit.*;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.event.*;
+import org.bukkit.event.inventory.*;
+import java.util.*;
 
 public class SpectateGuiListener implements Listener {
-    private final LangHandler langHandler;
-
-    public SpectateGuiListener(LangHandler langHandler) {
-        this.langHandler = langHandler;
-    }
-
+    private final LangHandler lang;
+    public SpectateGuiListener(LangHandler lang) { this.lang = lang; }
     @EventHandler
     public void onGuiOpen(InventoryClickEvent event) {
-        Player player = (Player) event.getWhoClicked();
-        Inventory clickedInventory = event.getClickedInventory();
-        Inventory openInventory = player.getOpenInventory().getTopInventory();
-
-        if (clickedInventory != null && clickedInventory.equals(openInventory)) {
-            ItemStack clickedItem = event.getCurrentItem();
-            if (clickedItem != null && clickedItem.getType() == Material.PLAYER_HEAD) {
-                event.setCancelled(true);
-
-                ItemMeta meta = clickedItem.getItemMeta();
-
-                if (meta != null && meta.hasDisplayName()) {
-                    String playerName = meta.getDisplayName();
-                    Player target = Bukkit.getPlayerExact(playerName);
-
-                    if (target == null) {
-                        player.sendMessage(langHandler.getMessage(player, "spectate.null-player"));
-                        return;
-                    }
-
-                    player.teleport(target.getLocation());
-                    player.sendMessage(langHandler.getMessage(player, "spectate.teleported", playerName));
-                    player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
-                }
-            }
+        if (!(event.getView().getTopInventory().getHolder() instanceof SpectatePlayerHandler.Menu menu)) return;
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player) || player.getGameMode() != GameMode.SPECTATOR
+                || !player.getWorld().getName().equals(menu.world)) return;
+        UUID id = menu.targets.get(event.getRawSlot());
+        if (id == null) return;
+        Player target = Bukkit.getPlayer(id);
+        if (target == null || !target.isOnline() || !target.getWorld().equals(player.getWorld())
+                || !GameSequenceHandler.playersAlive.getOrDefault(menu.world, List.of()).contains(target)) {
+            player.sendMessage("§eEse jugador ya no está en la partida.");
+            new SpectatePlayerHandler(lang).openSpectatorGUI(player);
+            return;
         }
+        player.closeInventory();
+        player.teleport(target.getLocation());
+        player.setSpectatorTarget(target);
+        player.sendMessage(lang.getMessage(player, "spectate.teleported", target.getName()));
+    }
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof SpectatePlayerHandler.Menu) event.setCancelled(true);
     }
 }

@@ -49,6 +49,16 @@ public class ArenaHandler {
 
         try {
             arenaConfig = YamlConfiguration.loadConfiguration(arenaFile);
+            // Existing arenas also follow the world's build limits, regardless of click height.
+            if (worldName.equals(arenaConfig.getString("region.world"))
+                    && arenaConfig.isSet("region.pos1.x") && arenaConfig.isSet("region.pos1.z")
+                    && arenaConfig.isSet("region.pos2.x") && arenaConfig.isSet("region.pos2.z")
+                    && (arenaConfig.getDouble("region.pos1.y", Double.NaN) != world.getMinHeight()
+                    || arenaConfig.getDouble("region.pos2.y", Double.NaN) != world.getMaxHeight() - 1)) {
+                arenaConfig.set("region.pos1.y", world.getMinHeight());
+                arenaConfig.set("region.pos2.y", world.getMaxHeight() - 1);
+                arenaConfig.save(arenaFile);
+            }
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Could not load arena.yml from", e);
         }

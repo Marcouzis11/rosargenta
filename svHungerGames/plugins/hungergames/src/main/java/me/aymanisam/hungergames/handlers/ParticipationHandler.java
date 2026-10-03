@@ -1,0 +1,28 @@
+package me.aymanisam.hungergames.handlers;
+
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+import java.util.*;
+
+public final class ParticipationHandler {
+    public static void leave(Player player, World world) {
+        String name = world.getName();
+        boolean active = me.aymanisam.hungergames.HungerGames.isGameStartingOrStarted(name)
+                && !GameSequenceHandler.celebratingWorlds.contains(name);
+        boolean alive = GameSequenceHandler.playersAlive.getOrDefault(name, new ArrayList<>()).remove(player);
+        if (alive && active) {
+            List<Player> placements = GameSequenceHandler.playerPlacements.computeIfAbsent(name, k -> new ArrayList<>());
+            if (!placements.contains(player)) placements.add(player);
+        }
+        List<List<Player>> teams = TeamsHandler.teamsAlive.getOrDefault(name, new ArrayList<>());
+        for (Iterator<List<Player>> iterator = teams.iterator(); iterator.hasNext();) {
+            List<Player> team = iterator.next();
+            if (team.remove(player) && team.isEmpty()) {
+                iterator.remove();
+                for (List<Player> original : TeamsHandler.teams.getOrDefault(name, List.of())) {
+                    if (active && original.contains(player)) GameSequenceHandler.teamPlacements.computeIfAbsent(name, k -> new ArrayList<>()).add(original);
+                }
+            }
+        }
+    }
+}

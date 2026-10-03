@@ -39,6 +39,8 @@ chestrefill:
   refilled: "&aChests have been refilled!"
 
 game:
+  deathmatch-title: "&4&lDEATHMATCH!"
+  deathmatch-start: "&cTime is up! Survivors return to the center. Fight until one player or team remains!"
   game-end: "&6The game has ended!"
   winner: "&b{0} &dis the winner!"
   solo-kills: "&dTime's up! &b{0} &dwon with most kills!"

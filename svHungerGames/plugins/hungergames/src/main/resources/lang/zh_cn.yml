@@ -39,6 +39,8 @@ chestrefill:
   refilled: "&a箱子已经被重新装填！"
 
 game:
+  deathmatch-title: "&4&lDEATHMATCH!"
+  deathmatch-start: "&cTime is up! Survivors return to the center. Fight until one player or team remains!"
   game-end: "&6游戏已结束！"
   winner: "&b{0} &d是胜利者！"
   solo-kills: "&d时间到!&b{0} &d赢了并且击杀最多！"

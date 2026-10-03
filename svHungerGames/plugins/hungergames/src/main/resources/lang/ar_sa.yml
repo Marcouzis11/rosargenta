@@ -39,6 +39,8 @@ chestrefill:
   refilled: "&aتم إعادة ملء الصناديق!"
 
 game:
+  deathmatch-title: "&4&lDEATHMATCH!"
+  deathmatch-start: "&cTime is up! Survivors return to the center. Fight until one player or team remains!"
   game-end: "&6انتهت اللعبة!"
   winner: "&b{0} &dهو الفائز!"
   solo-kills: "&dانتهى الوقت! &b{0} &dفاز بأكبر عدد من القتلات!"

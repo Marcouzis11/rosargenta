@@ -5,7 +5,7 @@
 chest-items:
   - type: WOODEN_SWORD
     amount: 1
-    weight: 2
+    weight: 5
 
   - type: CHAINMAIL_HELMET
     amount: 1
@@ -57,11 +57,11 @@ chest-items:
 
   - type: STONE_SWORD
     amount: 1
-    weight: 2
+    weight: 5
 
   - type: STONE_AXE
     amount: 1
-    weight: 2
+    weight: 5
 
   - type: SHIELD
     amount: 1
@@ -105,14 +105,84 @@ chest-items:
     amount: 1
     weight: 2
 
+  - type: WOODEN_AXE
+    amount: 1
+    weight: 5
+
+  - type: OAK_LOG
+    amount:
+      min: 3
+      max: 6
+    weight: 6
+
+  - type: OAK_PLANKS
+    amount:
+      min: 4
+      max: 12
+    weight: 6
+
+  - type: STICK
+    amount:
+      min: 2
+      max: 6
+    weight: 4
+
+  - type: COBBLESTONE
+    amount:
+      min: 2
+      max: 6
+    weight: 4
+
+  - type: CRAFTING_TABLE
+    amount: 1
+    weight: 2
+
+  # Independent roll per normal chest; not a relative weight.
+  - type: IRON_INGOT
+    amount:
+      min: 1
+      max: 2
+    chance: 30
+
+  - type: APPLE
+    amount:
+      min: 1
+      max: 2
+    chance: 35
+
+  - type: GOLD_INGOT
+    amount:
+      min: 2
+      max: 4
+    chance: 30
+
+  - type: DIAMOND
+    amount:
+      min: 1
+      max: 2
+    chance: 3
+
+  - type: ENCHANTED_BOOK
+    amount: 1
+    chance: 3
+    random-enchantments:
+      - type: sharpness
+        level: 1
+      - type: protection
+        level: 1
+      - type: power
+        level: 1
+      - type: efficiency
+        level: 1
+
 trapped-chest-items:
   - type: IRON_SWORD
     amount: 1
-    weight: 1
+    weight: 5
 
   - type: IRON_AXE
     amount: 1
-    weight: 1
+    weight: 5
 
   - type: IRON_HELMET
     amount: 1
@@ -214,14 +284,14 @@ barrel-items:
 
   - type: IRON_SWORD
     amount: 1
-    weight: 2
+    weight: 5
     enchantments:
       - type: SHARPNESS
         level: 3
 
   - type: IRON_AXE
     amount: 1
-    weight: 2
+    weight: 5
     enchantments:
       - type: SHARPNESS
         level: 3
@@ -533,3 +603,52 @@ supply-drop-items:
           - WHITE
         flicker: true
         trail: false
+
+
+  # Guaranteed bonus stacks in each supply drop.
+  - type: DIAMOND
+    amount:
+      min: 1
+      max: 2
+    chance: 100
+
+  - type: EXPERIENCE_BOTTLE
+    amount:
+      min: 4
+      max: 8
+    chance: 100
+
+ender-chest-items:
+  - type: STONE_SWORD
+    amount: 1
+    weight: 5
+  - type: IRON_SWORD
+    amount: 1
+    weight: 2
+  - type: STONE_AXE
+    amount: 1
+    weight: 4
+  - type: IRON_CHESTPLATE
+    amount: 1
+    weight: 2
+  - type: CHAINMAIL_HELMET
+    amount: 1
+    weight: 3
+  - type: COOKED_BEEF
+    amount:
+      min: 3
+      max: 6
+    weight: 5
+  - type: ARROW
+    amount:
+      min: 4
+      max: 8
+    weight: 3
+  - type: BOW
+    amount: 1
+    weight: 2
+  - type: IRON_INGOT
+    amount:
+      min: 1
+      max: 2
+    chance: 50

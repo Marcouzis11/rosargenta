@@ -39,6 +39,8 @@ chestrefill:
   refilled: "&aСундуки пополнены!"
 
 game:
+  deathmatch-title: "&4&lDEATHMATCH!"
+  deathmatch-start: "&cTime is up! Survivors return to the center. Fight until one player or team remains!"
   game-end: "&6Игра окончена!"
   winner: "&b{0} &dпобедил!"
   solo-kills: "&dВремя вышло! &b{0} &dвыиграл с наибольшим количеством убийств!"

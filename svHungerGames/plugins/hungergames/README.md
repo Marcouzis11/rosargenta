@@ -12,7 +12,8 @@ HungerGames is a modern Minecraft plugin for spigot servers inspired by the clas
 - Robust announcement system with customizable messages
 - Customizable arena allowing for all types of maps to work
 - 4 different tiers of chests, each with customizable loot
-- Customizable world border that shrinks over time
+- Fixed world border during the main game, replaced instantly by a small deathmatch border
+- When `game-time` expires, survivors return to their assigned starting platforms for a deathmatch. The border centers on all platforms and changes instantly to `deathmatch.border-size` (30 blocks by default, enlarged if necessary to include every platform plus a 2-block margin). The border remains fixed in both phases. PvP is enabled after a configurable 5-second protected preparation, inventories and health are preserved, and the match ends only when one player/team remains. Automatic chest refills and supply drops stop during deathmatch.
 - Automatic chest refills and supply drops at intervals
 - Individual scoreboard with various information related to the game
 - Allowing players to spectate after death and teleport to players alive
@@ -30,6 +31,31 @@ HungerGames is a modern Minecraft plugin for spigot servers inspired by the clas
 - Ability to run custom commands in the beginning and end of games
 
 ## Installation
+
+### Administración de arenas
+
+La selección `/hg select` solo usa X/Z de las dos esquinas. `/hg create` abarca desde la altura mínima del mundo hasta el último bloque construible, sin calcular la altura de edificios. Las arenas guardadas también actualizan automáticamente su rango vertical cuando se cargan.
+
+- `/hg config mapahg resumen` muestra duración, bordes, protección y restauración.
+- `/hg config mapahg validar` revisa lobby, spawns seguros, borde y cofres existentes.
+- `/hg config mapahg restaurar` restaura manualmente una arena vacía desde la plantilla.
+- `/hg config mapahg tiempo 600` cambia la duración en segundos.
+- `/hg config mapahg borde 44` cambia el lado del borde final; rechaza tamaños que dejan spawns afuera.
+- `/hg config mapahg proteccion 5` configura la preparación de la pelea final (0–30 segundos).
+- `/hg loot mapahg normal` muestra el botín; `especial` corresponde a Ender y `drop` a suministros.
+- `/hg loot mapahg normal IRON_INGOT 1 2 1 30` fija una probabilidad independiente del 30%; sin el último argumento usa peso relativo.
+- `/hg scanarena` convierte los cofres de Ender en cofres normales, conserva su ubicación y orientación y los registra para el botín común. Después se debe ejecutar `/hg saveworld` para actualizar la plantilla. El escaneo no se permite durante una partida o restauración.
+- `/hg saveworld` guarda una plantilla fuera de la partida; `reset-world: true` restaura bloques, cofres y entidades entre partidas. No se puede entrar mientras se guarda/restaura. Se conserva una copia de la partida anterior por arena.
+
+Las modificaciones de configuración y botín requieren `hungergames.config` (operadores por defecto) y una arena sin partida. Al desconectarse o salir del mundo se abandona la partida; al regresar se va al lobby sin recuperar participación ni equipo. Si faltan jugadores durante la cuenta regresiva, se cancela.
+
+Los cofres dobles normales y trampa se registran como un único cofre. El relleno también elimina duplicados de registros antiguos que contienen ambas mitades: conserva el inventario compartido de 54 espacios, la cantidad de botín configurada y una sola tirada de probabilidad por cofre.
+
+La pelea final avisa a 60/30/10 segundos, teletransporta a las plataformas y bloquea movimiento y daño durante la preparación. El menú `/hg spectate` permite seguir a supervivientes de la misma arena y bloquea manipulación de inventarios. Los cofres normales aseguran arma y comida del propio botín si ambas categorías existen (`ensure-weapon-and-food`, predeterminado true); el balance fino debe verificarse jugando.
+
+Winners celebrate in the arena for 10 seconds with fireworks before everyone returns to the lobby. With `spectating: true`, eliminated players spectate through the match and celebration. Players cannot take damage during the celebration.
+
+Normal chests include more swords/axes, wood, sticks and cobblestone. An item entry with `chance: 30` rolls independently once per container instead of using relative `weight`; normal chest iron is a 30% bonus stack of 1–2 ingots. Supply drops guarantee 1–2 diamonds and 4–8 experience bottles. Random amount limits are inclusive. Right-click a held crafting table to open crafting during a match, including in adventure mode.
 The latest releases of HungerGames are published to [Modrinth](https://modrinth.com/plugin/hungergames)
 
 ## Join the Community
@@ -41,3 +67,12 @@ There is a full [Wiki](https://hungergames.aymanisam.me/docs/introduction) for t
 ## Custom Version
 If you're interested in a custom version of this plugin tailored to your specific needs, join the discord server and reach out to me or create a GitHub issue.
 
+Los cofres normales tienen tiradas independientes por cofre: manzanas 35% (1–2), lingotes de oro 30% (2–4), diamantes 3% (1–2) y libro encantado 3% (1). El libro recibe al azar filo, protección, poder o eficiencia de nivel I. Los cofres dobles hacen una sola tirada por inventario compartido. Se necesitan ocho lingotes para craftear una manzana dorada.
+
+Los suministros buscan una superficie sólida con dos bloques de aire encima, ignorando cristal normal, teñido y oscuro, además de hojas y contenedores. Esto permite colocarlos debajo de una cúpula de cristal sin modificarla. Si una columna no ofrece espacio, se prueba otra; si no hay ubicación válida, se omite el suministro.
+
+En los mundos con una arena HG configurada se desactiva doMobSpawning y se cancela la aparición de mobs por cualquier causa, incluidos spawners, huevos y comandos. Los mobs existentes se eliminan al iniciar el plugin, cargar/restaurar el mundo o cargar las entidades de un chunk. La protección también se activa al crear una arena nueva. Se conservan jugadores, soportes de armadura de suministros, objetos, vehículos y fuegos artificiales; otros mundos no se modifican.
+
+En mapas con cúpula, los suministros requieren cristal encima de su ubicación: las esquinas del borde cuadrado que quedan fuera de la cúpula se descartan. La detección automática revisa la columna central del borde y cuatro puntos interiores; no cambia los mapas abiertos. Para fijar explícitamente este comportamiento en una arena, se puede agregar `require-glass-roof: true` dentro de `supplydrop` en su config.yml; `false` desactiva el requisito. La búsqueda de una ubicación alternativa y la reutilización de la anterior respetan el mismo requisito.
+
+Los supply drops ahora requieren estrictamente un bloque de pasto (GRASS_BLOCK) como base. No aceptan piedra, madera, ladrillos, tierra ni otros materiales de techos. Mantienen el requisito de cúpula cuando corresponde y dos bloques de aire para el portal y el contenedor. Se prueban hasta 128 columnas; si no se encuentra pasto válido, se omite ese suministro en lugar de usar otro material. El pasto existente se conserva.

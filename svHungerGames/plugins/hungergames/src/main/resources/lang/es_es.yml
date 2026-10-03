@@ -39,6 +39,8 @@ chestrefill:
   refilled: "&a¡Los cofres se han rellenado!"
 
 game:
+  deathmatch-title: "&4&l¡COMBATE FINAL!"
+  deathmatch-start: "&c¡Se acabó el tiempo! Los supervivientes vuelven al centro. ¡Solo un jugador o equipo puede ganar!"
   game-end: "&6¡El juego ha terminado!"
   winner: "&b{0} &des el ganador!"
   solo-kills: "&d¡Se acabó el tiempo! &b{0} &dha ganado con más asesinatos!"

@@ -79,7 +79,7 @@ public class ConfigHandler {
 
     public void saveWorldConfig(World world) {
         FileConfiguration configToSave = getWorldConfig(world);
-        File fileToSave = worldFile;
+        File fileToSave = new File(plugin.getDataFolder(), world.getName() + File.separator + "config.yml");
         if (configToSave != null && fileToSave != null) {
             try {
                 configToSave.save(fileToSave);

@@ -35,6 +35,7 @@ public final class HungerGames extends JavaPlugin {
 
     private GameSequenceHandler gameSequenceHandler;
     private ConfigHandler configHandler;
+    private ArenaMobListener arenaMobListener;
     private DatabaseHandler database;
 
     public DatabaseHandler getDatabase() {
@@ -147,6 +148,10 @@ public final class HungerGames extends JavaPlugin {
 
 	    hgWorldNames.remove(configHandler.getPluginSettings().getString("lobby-world"));
 
+        arenaMobListener = new ArenaMobListener(this);
+        getServer().getPluginManager().registerEvents(arenaMobListener, this);
+        getServer().getWorlds().forEach(arenaMobListener::protectConfiguredWorld);
+
         // Checks if the current version is the latest version
         int spigotPluginId = 111936;
 
@@ -204,6 +209,10 @@ public final class HungerGames extends JavaPlugin {
 
 	public ConfigHandler getConfigHandler() {
         return configHandler;
+    }
+
+    public ArenaMobListener getArenaMobListener() {
+        return arenaMobListener;
     }
 
     @Override

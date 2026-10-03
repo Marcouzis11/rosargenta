@@ -56,6 +56,10 @@ public class JoinGameCommand implements CommandExecutor {
         }
 
         String worldName = args[0];
+        if (WorldResetHandler.busyWorlds.contains(worldName)) {
+            player.sendMessage("§eLa arena se está preparando. Intentá nuevamente en unos segundos.");
+            return true;
+        }
 
         if (!hgWorldNames.contains(worldName)) {
             sender.sendMessage(langHandler.getMessage(player, "teleport.invalid-world", worldName));

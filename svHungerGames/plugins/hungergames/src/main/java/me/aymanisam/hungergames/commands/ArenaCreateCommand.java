@@ -16,8 +16,10 @@ import java.util.Objects;
 public class ArenaCreateCommand implements CommandExecutor {
     private final LangHandler langHandler;
     private final ArenaHandler arenaHandler;
+    private final HungerGames plugin;
 
     public ArenaCreateCommand(HungerGames plugin, LangHandler langHandler) {
+        this.plugin = plugin;
         this.langHandler = langHandler;
         this.arenaHandler = new ArenaHandler(plugin, langHandler);
     }
@@ -48,17 +50,23 @@ public class ArenaCreateCommand implements CommandExecutor {
             return true;
         }
 
+        if (!player.getWorld().equals(pos1.getWorld()) || !player.getWorld().equals(pos2.getWorld())) {
+            sender.sendMessage(langHandler.getMessage(player, "arena.invalid-values"));
+            return true;
+        }
+
         player.sendMessage(langHandler.getMessage(player, "arena.region-created"));
 
         FileConfiguration arenaConfig = arenaHandler.getArenaConfig(player.getWorld());
         arenaConfig.set("region.world", Objects.requireNonNull(pos1.getWorld()).getName());
         arenaConfig.set("region.pos1.x", pos1.getX());
-        arenaConfig.set("region.pos1.y", pos1.getY());
+        arenaConfig.set("region.pos1.y", player.getWorld().getMinHeight());
         arenaConfig.set("region.pos1.z", pos1.getZ());
         arenaConfig.set("region.pos2.x", pos2.getX());
-        arenaConfig.set("region.pos2.y", pos2.getY());
+        arenaConfig.set("region.pos2.y", player.getWorld().getMaxHeight() - 1);
         arenaConfig.set("region.pos2.z", pos2.getZ());
         arenaHandler.saveArenaConfig();
+        plugin.getArenaMobListener().protectArena(player.getWorld());
         return true;
     }
 }
