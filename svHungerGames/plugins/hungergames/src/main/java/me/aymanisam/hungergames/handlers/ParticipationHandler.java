@@ -5,6 +5,20 @@ import org.bukkit.entity.Player;
 import java.util.*;
 
 public final class ParticipationHandler {
+    public static boolean countsAsPlayer(Player player) {
+        return player.getGameMode() != org.bukkit.GameMode.SPECTATOR;
+    }
+
+    public static int count(Collection<Player> players) {
+        return (int) players.stream().filter(ParticipationHandler::countsAsPlayer).distinct().count();
+    }
+
+    public static void removeSpectators(World world) {
+        for (Player player : new ArrayList<>(GameSequenceHandler.playersAlive.getOrDefault(world.getName(), List.of()))) {
+            if (!countsAsPlayer(player)) leave(player, world);
+        }
+    }
+
     public static void leave(Player player, World world) {
         String name = world.getName();
         boolean active = me.aymanisam.hungergames.HungerGames.isGameStartingOrStarted(name)

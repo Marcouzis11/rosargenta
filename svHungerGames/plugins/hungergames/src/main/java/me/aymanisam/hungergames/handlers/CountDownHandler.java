@@ -44,7 +44,7 @@ public class CountDownHandler {
                 org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
                         new java.io.File(plugin.getDataFolder(), world.getName() + "/setspawn.yml")).getStringList("spawnpoints"),
                 Math.max(plugin.getConfigHandler().getWorldConfig(world).getInt("min-players"),
-                        spawnPointMap.getOrDefault(world.getName(), Map.of()).size()));
+                        ParticipationHandler.count(spawnPointMap.getOrDefault(world.getName(), Map.of()).values())));
         if (!errors.isEmpty()) {
             gameStarting.put(world.getName(), false);
             for (Player player : world.getPlayers()) player.sendMessage("§cNo se puede iniciar: " + String.join(" | ", errors));
@@ -116,7 +116,8 @@ public class CountDownHandler {
         Map<String, Player> worldSpawnPointMap = spawnPointMap.computeIfAbsent(world.getName(), k -> new HashMap<>());
         List<Player> worldPlayersAlive = playersAlive.computeIfAbsent(world.getName(), k -> new ArrayList<>());
 
-        worldPlayersAlive.addAll(worldSpawnPointMap.values());
+        worldSpawnPointMap.values().stream().filter(ParticipationHandler::countsAsPlayer)
+                .filter(player -> !worldPlayersAlive.contains(player)).forEach(worldPlayersAlive::add);
     }
 
     private void runAfterDelay(World world) {
@@ -125,6 +126,7 @@ public class CountDownHandler {
         int countDownDuration = configHandler.getWorldConfig(world).getInt("countdown");
 
         worldCountDownTasks.add(plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            ParticipationHandler.removeSpectators(world);
             if (playersAlive.getOrDefault(world.getName(), List.of()).size() < configHandler.getWorldConfig(world).getInt("min-players")) {
                 cancelCountDown(world);
                 for (Player player : world.getPlayers()) player.sendMessage("§cCuenta regresiva cancelada: faltan jugadores.");

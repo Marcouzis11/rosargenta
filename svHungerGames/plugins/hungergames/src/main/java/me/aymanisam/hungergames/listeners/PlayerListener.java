@@ -112,6 +112,26 @@ public class PlayerListener implements Listener {
         signHandler.setSignContent();
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onGameModeChange(PlayerGameModeChangeEvent event) {
+        if (event.getNewGameMode() != GameMode.SPECTATOR) return;
+        Player player = event.getPlayer();
+        World world = player.getWorld();
+        if (!playersAlive.getOrDefault(world.getName(), List.of()).contains(player)
+                && !SetSpawnHandler.spawnPointMap.getOrDefault(world.getName(), Map.of()).containsValue(player)) return;
+        // The event fires before Bukkit applies the new mode.
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (player.getGameMode() != GameMode.SPECTATOR) return;
+            ParticipationHandler.leave(player, world);
+            if (!gameStarted.getOrDefault(world.getName(), false)) {
+                setSpawnHandler.removePlayerFromSpawnPoint(player, world);
+                setSpawnHandler.playersWaiting.getOrDefault(world.getName(), new ArrayList<>()).remove(player);
+                if (gameStarting.getOrDefault(world.getName(), false)) setSpawnHandler.checkEnoughPlayers(world);
+            }
+            signHandler.setSignContent();
+        });
+    }
+
     private void removeFromTeam(Player player) {
         List<List<Player>> worldTeams = teams.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
         List<List<Player>> worldTeamsAlive = teamsAlive.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
@@ -202,7 +222,7 @@ public class PlayerListener implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
         World world = player.getWorld();
@@ -215,6 +235,9 @@ public class PlayerListener implements Listener {
 
         if (gameStarted.getOrDefault(world.getName(), false) || gameStarting.getOrDefault(world.getName(), false)) {
             respawnArenas.put(player.getUniqueId(), world.getName());
+            if (gameStarted.getOrDefault(world.getName(), false) && worldPlayersAlive.contains(player)) {
+                DeathLootHandler.dropInventory(event);
+            }
             worldPlayersAlive.remove(player);
             if (configHandler.getWorldConfig(world).getInt("players-per-team") == 1) {
                 worldPlayersPlacement.add(player);
@@ -300,7 +323,7 @@ public class PlayerListener implements Listener {
         Location location = player.getLocation();
         world.spawnParticle(Particle.EXPLOSION_LARGE, player.getLocation(), 10);
         world.spawnParticle(Particle.REDSTONE, location, 50, new Particle.DustOptions(Color.RED, 10f));
-        world.playSound(player.getLocation(), Sound.ENTITY_WITHER_DEATH, 0.4f, 1.0f);
+        world.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 0.25f, 0.8f);
 
         if (gameStarted.getOrDefault(world.getName(), false)) {
             for (Player p : world.getPlayers()) {

@@ -15,12 +15,14 @@ import static me.aymanisam.hungergames.handlers.TeamsHandler.teams;
 import static me.aymanisam.hungergames.listeners.PlayerListener.playerKills;
 
 public class ScoreBoardHandler {
+    private final HungerGames plugin;
     private final LangHandler langHandler;
     private final ConfigHandler configHandler;
 
     public static final Map<UUID, FastBoard> boards = new HashMap<>();
 
     public ScoreBoardHandler(HungerGames plugin, LangHandler langHandler) {
+        this.plugin = plugin;
         this.langHandler = langHandler;
         this.configHandler = plugin.getConfigHandler();
     }
@@ -73,7 +75,7 @@ public class ScoreBoardHandler {
         int borderStartSize = worldConfig.getInt("border.size");
 
         int worldTimeLeft = timeLeft.get(world.getName());
-        int worldPlayersAliveSize = playersAlive.computeIfAbsent(world.getName(), k -> new ArrayList<>()).size();
+        int worldPlayersAliveSize = ParticipationHandler.count(playersAlive.getOrDefault(world.getName(), List.of()));
         int worldStartingPlayers = startingPlayers.get(world.getName()).size();
         int worldBorderSize = (int) world.getWorldBorder().getSize();
         int pvpTimeLeft = (worldTimeLeft - gameTimeConfig) + pvpTimeConfig;
@@ -108,7 +110,10 @@ public class ScoreBoardHandler {
         lines.add("");
         if (!deathmatch) {
             lines.add(formatScore(board.getPlayer(), "score.chestrefill", chestRefillTimeLeft, chestRefillInterval));
-            lines.add(formatScore(board.getPlayer(), "score.supplydrop", supplyDropTimeLeft, supplyDropInterval));
+            String supplyLine = formatScore(board.getPlayer(), "score.supplydrop", supplyDropTimeLeft, supplyDropInterval);
+            SupplyDropTracker tracker = plugin.getSupplyDropTracker();
+            if (tracker != null) supplyLine += tracker.directionFor(board.getPlayer());
+            lines.add(supplyLine);
         }
 
         String teamScoreBoard = getScoreBoardTeam(board.getPlayer(), world);

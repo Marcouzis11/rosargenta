@@ -36,6 +36,7 @@ public final class HungerGames extends JavaPlugin {
     private GameSequenceHandler gameSequenceHandler;
     private ConfigHandler configHandler;
     private ArenaMobListener arenaMobListener;
+    private SupplyDropTracker supplyDropTracker;
     private DatabaseHandler database;
 
     public DatabaseHandler getDatabase() {
@@ -66,6 +67,7 @@ public final class HungerGames extends JavaPlugin {
 
 	    this.configHandler = new ConfigHandler(this);
 	    configHandler.validateSettingsKeys();
+        supplyDropTracker = new SupplyDropTracker(this);
 
         // Initializing shared classes
 	    LangHandler langHandler = new LangHandler(this);
@@ -213,6 +215,10 @@ public final class HungerGames extends JavaPlugin {
 
     public ArenaMobListener getArenaMobListener() {
         return arenaMobListener;
+    }
+
+    public SupplyDropTracker getSupplyDropTracker() {
+        return supplyDropTracker;
     }
 
     @Override

@@ -39,7 +39,7 @@ public class SignHandler {
 		for (Map.Entry<String, Location> entry : signLocations.entrySet()) {
 			String worldName = slots.get(entry.getKey());
 
-			int worldPlayersWaitingSize = setSpawnHandler.playersWaiting.computeIfAbsent(worldName, k -> new ArrayList<>()).size();
+			int worldPlayersWaitingSize = ParticipationHandler.count(setSpawnHandler.playersWaiting.getOrDefault(worldName, List.of()));
 			int worldSpawnPointSize = setSpawnHandler.spawnPoints.computeIfAbsent(worldName, k -> new ArrayList<>()).size();
 			List<Player> worldPlayersAlive = playersAlive.computeIfAbsent(worldName, k -> new ArrayList<>());
 
@@ -55,8 +55,8 @@ public class SignHandler {
 				if (isGameStartingOrStarted(worldName)) {
 					frontSide.setLine(2, ChatColor.BOLD + "In Progress");
 					backSide.setLine(2, ChatColor.BOLD + "In Progress");
-					frontSide.setLine(3, ChatColor.BOLD + "" + worldPlayersAlive.size() + " Alive");
-					backSide.setLine(3, ChatColor.BOLD + "" + worldPlayersAlive.size() + " Alive");
+					frontSide.setLine(3, ChatColor.BOLD + "" + ParticipationHandler.count(worldPlayersAlive) + " Alive");
+					backSide.setLine(3, ChatColor.BOLD + "" + ParticipationHandler.count(worldPlayersAlive) + " Alive");
 				} else {
 					frontSide.setLine(2, ChatColor.BOLD + "Waiting");
 					backSide.setLine(2, ChatColor.BOLD + "Waiting");

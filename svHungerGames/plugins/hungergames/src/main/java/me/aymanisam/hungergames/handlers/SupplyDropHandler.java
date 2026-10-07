@@ -148,6 +148,7 @@ public class SupplyDropHandler {
             blockList.add(topmostBlock.getLocation());
 
             chestRefillHandler.refillInventory(blockList, "supply-drop-items", itemsConfig, minSupplyDropContent, maxSupplyDropContent);
+            plugin.getSupplyDropTracker().track(topmostBlock.getLocation());
 
             String message = " X: " + topmostBlock.getX() + " Y: " + topmostBlock.getY() + " Z: " + topmostBlock.getZ();
 
@@ -175,17 +176,19 @@ public class SupplyDropHandler {
 
     static Integer findLandingY(World world, int x, int z, boolean requireGlassRoof) {
         int top = Math.min(world.getHighestBlockYAt(x, z), world.getMaxHeight() - 1);
-        boolean belowGlass = false;
+        // True only while the vertical path reaches glass (or open sky in an open map).
+        boolean clearAbove = !requireGlassRoof;
         for (int y = top; y >= world.getMinHeight(); y--) {
             Material surface = world.getBlockAt(x, y, z).getType();
             if (isGlass(surface)) {
-                belowGlass = true;
+                clearAbove = true;
                 continue;
             }
-            if (y > world.getMaxHeight() - 3 || (requireGlassRoof && !belowGlass)) continue;
-            if (surface != Material.GRASS_BLOCK) continue;
-            if (world.getBlockAt(x, y + 1, z).getType().isAir()
+            if (surface == Material.GRASS_BLOCK && clearAbove && y <= world.getMaxHeight() - 3
+                    && world.getBlockAt(x, y + 1, z).getType().isAir()
                     && world.getBlockAt(x, y + 2, z).getType().isAir()) return y;
+            // A cave ceiling, house, tree or any other obstruction breaks the path.
+            if (!surface.isAir()) clearAbove = false;
         }
         return null;
     }

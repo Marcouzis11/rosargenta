@@ -3,6 +3,10 @@
 #Link for getting enchantment names https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/enchantments/Enchantment.html
 
 chest-items:
+  - type: FISHING_ROD
+    amount: 1
+    chance: 5
+
   - type: WOODEN_SWORD
     amount: 1
     weight: 5
@@ -96,10 +100,6 @@ chest-items:
   - type: BREAD
     amount: 4
     weight: 3
-
-  - type: COMPASS
-    amount: 1
-    weight: 2
 
   - type: ENDER_PEARL
     amount: 1
@@ -227,10 +227,6 @@ trapped-chest-items:
   - type: ENDER_PEARL
     weight: 1
     amount: 1
-
-  - type: COMPASS
-    amount: 1
-    weight: 1
 
   - type: POTION
     weight: 2

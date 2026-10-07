@@ -189,7 +189,7 @@ public class SetSpawnHandler {
         }
 
         if (configHandler.getWorldConfig(world).getBoolean("auto-start.enabled")) {
-            if (world.getPlayers().size() >= configHandler.getWorldConfig(world).getInt("auto-start.players")) {
+            if (ParticipationHandler.count(worldSpawnPointMap.values()) >= configHandler.getWorldConfig(world).getInt("auto-start.players")) {
                 List<BukkitTask> worldAutoStartTasks = autoStartTasks.computeIfAbsent(world.getName(), k -> new ArrayList<>());
 
                 if (!worldAutoStartTasks.isEmpty()) {
@@ -215,7 +215,7 @@ public class SetSpawnHandler {
 
         int minPlayers = configHandler.getWorldConfig(world).getInt("min-players");
 
-        if (worldSpawnPointMap.size() < minPlayers) {
+        if (ParticipationHandler.count(worldSpawnPointMap.values()) < minPlayers) {
             if (gameStarting.getOrDefault(world.getName(), false)) {
                 countDownHandler.cancelCountDown(world);
                 for (Player p : world.getPlayers()) {

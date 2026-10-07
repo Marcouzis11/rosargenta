@@ -69,13 +69,33 @@ class SupplyDropLandingTest {
         assertNull(SupplyDropHandler.findLandingY(world, 5, 6, false));
     }
 
-    @Test void houseRoofIsSkippedInFavorOfGrassBelowIt() {
+    @Test void grassBelowHouseRoofIsRejectedEvenWithDomeAboveTheHouse() {
         World world = column(Map.of(100, Material.GLASS, 50, Material.OAK_PLANKS, 25, Material.GRASS_BLOCK), 100, -64, 320);
-        assertEquals(25, SupplyDropHandler.findLandingY(world, 5, 6, true));
+        assertNull(SupplyDropHandler.findLandingY(world, 5, 6, true));
+        assertNull(SupplyDropHandler.findLandingY(world, 5, 6, false));
     }
 
     @Test void grassWithObstructedDropSpaceIsRejected() {
         World world = column(Map.of(100, Material.GLASS, 27, Material.OAK_PLANKS, 25, Material.GRASS_BLOCK), 100, -64, 320);
         assertNull(SupplyDropHandler.findLandingY(world, 5, 6, true));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = Material.class, names = {
+            "STONE", "DIRT", "OAK_LEAVES", "WATER", "OAK_PLANKS"})
+    void anyObstructionBetweenGrassAndGlassRejectsCaveOrCoveredGround(Material ceiling) {
+        World world = column(Map.of(100, Material.GLASS, 60, ceiling, 25, Material.GRASS_BLOCK), 100, -64, 320);
+        assertNull(SupplyDropHandler.findLandingY(world, 5, 6, true));
+        assertNull(SupplyDropHandler.findLandingY(world, 5, 6, false));
+    }
+
+    @Test void surfaceGrassIsChosenInsteadOfGrassOnCaveFloor() {
+        World world = column(Map.of(100, Material.GLASS, 60, Material.GRASS_BLOCK, 55, Material.STONE, 25, Material.GRASS_BLOCK), 100, -64, 320);
+        assertEquals(60, SupplyDropHandler.findLandingY(world, 5, 6, true));
+    }
+
+    @Test void openWorldCaveFloorIsRejectedWithoutGlass() {
+        World world = column(Map.of(60, Material.STONE, 25, Material.GRASS_BLOCK), 60, -64, 320);
+        assertNull(SupplyDropHandler.findLandingY(world, 5, 6, false));
     }
 }

@@ -98,7 +98,7 @@ public class StartGameCommand implements CommandExecutor {
 
         Map<String, Player> worldSpawnPointMap = spawnPointMap.computeIfAbsent(world.getName(), k -> new HashMap<>());
 
-        if (worldSpawnPointMap.size() < minPlayers) {
+        if (me.aymanisam.hungergames.handlers.ParticipationHandler.count(worldSpawnPointMap.values()) < minPlayers) {
             sender.sendMessage(langHandler.getMessage(player, "startgame.min-players", minPlayers));
             return true;
         }

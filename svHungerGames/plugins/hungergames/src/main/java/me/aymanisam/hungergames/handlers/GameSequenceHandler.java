@@ -77,6 +77,7 @@ public class GameSequenceHandler {
     }
 
     public void startGame(World world) {
+        ParticipationHandler.removeSpectators(world);
         List<String> errors = new ArenaValidationHandler(plugin).validate(world,
                 setSpawnHandler.spawnPoints.getOrDefault(world.getName(), List.of()),
                 playersAlive.getOrDefault(world.getName(), List.of()).size());
@@ -209,6 +210,7 @@ public class GameSequenceHandler {
 
         int worldTimerTaskId = plugin.getServer().getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
             if (celebratingWorlds.contains(world.getName())) return;
+            ParticipationHandler.removeSpectators(world);
             if (displayBossbars) {
                 updateBossBars(world);
             }
@@ -527,6 +529,7 @@ public class GameSequenceHandler {
     }
 
     public void endGame(Boolean disable, World world) {
+        if (plugin.getSupplyDropTracker() != null) plugin.getSupplyDropTracker().clear(world);
         if (!hgWorldNames.contains(world.getName())) return;
         preparingDeathmatchWorlds.remove(world.getName());
         BukkitTask preparing = deathmatchPreparationTasks.remove(world.getName());
