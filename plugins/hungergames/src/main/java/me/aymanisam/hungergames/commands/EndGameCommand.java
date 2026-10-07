@@ -62,7 +62,10 @@ public class EndGameCommand implements CommandExecutor {
             world = player.getWorld();
         }
 
-	    assert world != null;
+	    if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
 	    if (!isGameStartingOrStarted(world.getName())) {
             sender.sendMessage(langHandler.getMessage(player, "game.not-started"));
             return true;

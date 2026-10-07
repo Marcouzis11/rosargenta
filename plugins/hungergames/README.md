@@ -2,7 +2,7 @@
 
 HungerGames is a modern Minecraft plugin for spigot servers inspired by the classic 2012 Hunger Games game mode. It provides a fast-paced environment where players compete for resources, fight opponents and aim to be the last person alive. Designed for flexibility, it supports multiple arenas, game modes and extensive customization.
 
-![Minecraft](https://img.shields.io/badge/Minecraft-1.20+-brightgreen?label=MC&style=for-the-badge)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.21.4-brightgreen?label=MC&style=for-the-badge)
 ![Version](https://img.shields.io/modrinth/v/hungergames?&style=for-the-badge)
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/hungergames?logo=modrinth&style=for-the-badge)](https://modrinth.com/plugin/hungergames)
 [![bStats Servers](https://img.shields.io/bstats/servers/21512?logo=googleanalytics&style=for-the-badge)](https://bstats.org/plugin/bukkit/HungerGames%20-%20Ayman/21512)
@@ -31,6 +31,10 @@ HungerGames is a modern Minecraft plugin for spigot servers inspired by the clas
 - Ability to run custom commands in the beginning and end of games
 
 ## Installation
+
+Esta compilación está destinada a **Paper 1.21.4 con Java 21**. Para compilar, usá un JDK 21 y ejecutá `./gradlew test shadowJar`; el plugin queda en `build/libs/Hungergames-1.9.1-beta.jar` (o en `OUTPUT_DIR` si lo definís). Las pociones de configuraciones antiguas se interpretan sin reemplazar los archivos personalizados.
+
+La revisión de compatibilidad con Ubuntu, las correcciones y las comprobaciones pendientes del servidor están en [AUDITORIA_UBUNTU.md](AUDITORIA_UBUNTU.md).
 
 ### Administración de arenas
 

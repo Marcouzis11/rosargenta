@@ -13,7 +13,6 @@ import org.bukkit.util.Vector;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.*;
 import java.util.logging.Level;
 
@@ -65,8 +64,7 @@ public class SetSpawnHandler {
 
         if (!setSpawnFile.exists()) {
             try {
-                plugin.saveResource("setspawn.yml", true);
-                Files.copy(new File(plugin.getDataFolder(), "setspawn.yml").toPath(), setSpawnFile.toPath());
+                configHandler.copyDefaultResource("setspawn.yml", setSpawnFile);
             } catch (IOException e) {
                 plugin.getLogger().log(Level.SEVERE, "Could not create spawnpoint file for world " + setSpawnFile, e);
             }
@@ -130,59 +128,68 @@ public class SetSpawnHandler {
 
     public void removePlayerFromSpawnPoint(Player player, World world) {
         Map<String, Player> worldSpawnPointMap = spawnPointMap.computeIfAbsent(world.getName(), k -> new HashMap<>());
-
-        Iterator<Map.Entry<String, Player>> iterator = worldSpawnPointMap.entrySet().iterator();
-
-        while (iterator.hasNext()) {
-            Map.Entry<String, Player> entry = iterator.next();
-            if (entry.getValue().equals(player)) {
-                iterator.remove();
-                break;
-            }
-        }
+        worldSpawnPointMap.values().removeIf(registered -> ParticipationHandler.samePlayer(registered, player));
+        playersWaiting.getOrDefault(world.getName(), new ArrayList<>())
+                .removeIf(registered -> ParticipationHandler.samePlayer(registered, player));
     }
 
-    public void teleportPlayerToSpawnpoint(Player player, World world) {
+    public boolean teleportPlayerToSpawnpoint(Player player, World world) {
         String spawnPoint = assignPlayerToSpawnPoint(player, world);
 
         if (spawnPoint == null) {
-            return;
+            return false;
         }
 
         Map<String, Player> worldSpawnPointMap = spawnPointMap.computeIfAbsent(world.getName(), k -> new HashMap<>());
         List<Player> worldPlayersWaiting = playersWaiting.computeIfAbsent(world.getName(), k -> new ArrayList<>());
         List<String> worldSpawnPoints = spawnPoints.computeIfAbsent(world.getName(), k -> new ArrayList<>());
 
+        String[] coords = spawnPoint.split(",");
+        if (coords.length != 4 || !coords[0].equals(world.getName())) {
+            plugin.getLogger().warning("Invalid spawnpoint in " + world.getName() + ": " + spawnPoint);
+            player.sendMessage(langHandler.getMessage(player, "game.join-fail"));
+            return false;
+        }
+        try {
+            double x = Double.parseDouble(coords[1]) + 0.5;
+            double y = Double.parseDouble(coords[2]) + 1.0;
+            double z = Double.parseDouble(coords[3]) + 0.5;
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+                throw new IllegalArgumentException("Spawn coordinates must be finite");
+            }
+
+            Location teleportLocation = new Location(world, x, y, z);
+
+            Location spawnLocation = world.getSpawnLocation();
+
+            Vector direction = spawnLocation.toVector().subtract(teleportLocation.toVector());
+
+            float yaw = (float) (Math.toDegrees(Math.atan2(direction.getZ(), direction.getX())) - 90);
+
+            teleportLocation.setYaw(yaw);
+
+            if (!player.teleport(teleportLocation)) {
+                player.sendMessage(langHandler.getMessage(player, "game.join-fail"));
+                return false;
+            }
+            resetPlayerHandler.resetPlayer(player);
+        } catch (RuntimeException | LinkageError ex) {
+            plugin.getLogger().log(Level.SEVERE, "Cannot join arena " + world.getName() + " for " + player.getName(), ex);
+            player.sendMessage(langHandler.getMessage(player, "game.join-fail"));
+            return false;
+        }
         worldSpawnPointMap.put(spawnPoint, player);
         worldPlayersWaiting.add(player);
         signHandler.setSignContent();
-
-        String[] coords = spawnPoint.split(",");
-        double x = Double.parseDouble(coords[1]) + 0.5;
-        double y = Double.parseDouble(coords[2]) + 1.0;
-        double z = Double.parseDouble(coords[3]) + 0.5;
-
-        Location teleportLocation = new Location(world, x, y, z);
-
-        Location spawnLocation = world.getSpawnLocation();
-
-        Vector direction = spawnLocation.toVector().subtract(teleportLocation.toVector());
-
-        float yaw = (float) (Math.toDegrees(Math.atan2(direction.getZ(), direction.getX())) - 90);
-
-        teleportLocation.setYaw(yaw);
-
-        player.teleport(teleportLocation);
 
         for (Player onlinePlayer : world.getPlayers()) {
             onlinePlayer.sendMessage(langHandler.getMessage(onlinePlayer, "setspawn.joined-message", player.getName(), worldSpawnPointMap.size(), worldSpawnPoints.size()));
         }
 
-        resetPlayerHandler.resetPlayer(player);
-
         if (configHandler.getWorldConfig(world).getBoolean("voting")) {
             Bukkit.getScheduler().scheduleSyncDelayedTask(plugin, () -> {
-                if (worldSpawnPointMap.containsValue(player) && !gameStarted.getOrDefault(player.getWorld().getName(), false) && !gameStarting.getOrDefault(player.getWorld().getName(), false)) {
+                if (worldSpawnPointMap.containsValue(player) && player.getWorld().equals(world)
+                        && !isGameStartingOrStarted(world.getName())) {
                     teamVotingListener.openVotingInventory(player);
                 }
             }, 100L);
@@ -193,7 +200,7 @@ public class SetSpawnHandler {
                 List<BukkitTask> worldAutoStartTasks = autoStartTasks.computeIfAbsent(world.getName(), k -> new ArrayList<>());
 
                 if (!worldAutoStartTasks.isEmpty()) {
-                    return;
+                    return true;
                 }
 
                 int autoStartDelay = configHandler.getWorldConfig(world).getInt("auto-start.delay");
@@ -202,12 +209,16 @@ public class SetSpawnHandler {
                 }
 
                 BukkitTask task = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                    gameStarting.put(player.getWorld().getName(), true);
+                    autoStartTasks.remove(world.getName());
+                    if (isGameStartingOrStarted(world.getName())
+                            || ParticipationHandler.count(worldSpawnPointMap.values()) < configHandler.getWorldConfig(world).getInt("min-players")) return;
+                    gameStarting.put(world.getName(), true);
                     countDownHandler.startCountDown(world);
                 }, autoStartDelay * 20L);
                 worldAutoStartTasks.add(task);
             }
         }
+        return true;
     }
 
     public void checkEnoughPlayers(World world) {

@@ -5,10 +5,11 @@ plugins {
 
 group = "me.aymanisam"
 version = "1.9.1-beta"
-val spigotAPIVersion = "1.20"
+val spigotAPIVersion = "1.21.4"
 
 repositories {
     mavenCentral()
+    maven("https://repo.papermc.io/repository/maven-public/")
     mavenLocal()
     maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
     maven("https://oss.sonatype.org/content/groups/public/")
@@ -24,25 +25,25 @@ dependencies {
     implementation("org.bstats:bstats-bukkit:2.2.1")
     compileOnly("com.github.retrooper:packetevents-spigot:2.7.0")
     implementation("com.googlecode.json-simple:json-simple:1.1.1")
-    implementation("fr.mrmicky:fastboard:2.1.5")
+    implementation("fr.mrmicky:fastboard:2.2.2")
+    implementation("com.mysql:mysql-connector-j:8.4.0")
     compileOnly("me.clip:placeholderapi:2.11.6")
-    testImplementation("org.spigotmc:spigot-api:$spigotAPIVersion-R0.1-SNAPSHOT")
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.33.2")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testImplementation("org.mockito:mockito-core:5.15.2")
 }
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
 }
 
-val targetJavaVersion = 17
+val targetJavaVersion = 21
 java {
     val javaVersion = JavaVersion.toVersion(targetJavaVersion)
     sourceCompatibility = javaVersion
     targetCompatibility = javaVersion
-    if (JavaVersion.current() < javaVersion) {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(targetJavaVersion))
-    }
+    toolchain.languageVersion.set(JavaLanguageVersion.of(targetJavaVersion))
 }
 
 tasks.withType<JavaCompile> {
@@ -54,10 +55,13 @@ tasks.withType<JavaCompile> {
 
 tasks.shadowJar {
     archiveFileName.set("Hungergames-$version.jar")
-    relocate("org.bstats", "$group.bstats")
-    relocate("fr.mrmicky.fastboard", "$group.fastboard")
+    relocate("org.bstats", "${project.group}.bstats")
+    relocate("fr.mrmicky.fastboard", "${project.group}.fastboard")
     archiveClassifier.set("")
-    destinationDirectory.set(file(System.getenv("OUTPUT_DIR")))
+    providers.environmentVariable("OUTPUT_DIR").orNull?.takeIf { it.isNotBlank() }?.let {
+        destinationDirectory.set(file(it))
+    }
+    mergeServiceFiles()
 }
 
 tasks.processResources {

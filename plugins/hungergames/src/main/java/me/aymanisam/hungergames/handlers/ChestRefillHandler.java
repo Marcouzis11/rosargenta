@@ -18,7 +18,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionType;
 
 import java.io.File;
@@ -47,9 +46,9 @@ public class ChestRefillHandler {
         File chestLocationsFile = new File(worldFolder, "chest-locations.yml");
         FileConfiguration chestLocationsConfig = YamlConfiguration.loadConfiguration(chestLocationsFile);
 
-        List<Location> chestLocations = deserializeLocations(chestLocationsConfig, "chest-locations");
-        List<Location> barrelLocations = deserializeLocations(chestLocationsConfig, "barrel-locations");
-        List<Location> trappedChestLocations = deserializeLocations(chestLocationsConfig, "trapped-chests-locations");
+        List<Location> chestLocations = deserializeLocations(chestLocationsConfig, "chest-locations", world);
+        List<Location> barrelLocations = deserializeLocations(chestLocationsConfig, "barrel-locations", world);
+        List<Location> trappedChestLocations = deserializeLocations(chestLocationsConfig, "trapped-chests-locations", world);
 
         int minChestContent = configHandler.getWorldConfig(world).getInt("min-chest-content");
         int maxChestContent = configHandler.getWorldConfig(world).getInt("max-chest-content");
@@ -63,7 +62,7 @@ public class ChestRefillHandler {
         refillInventory(chestLocations, "chest-items", itemsConfig, minChestContent, maxChestContent);
         refillInventory(barrelLocations, "barrel-items", itemsConfig, minBarrelContent, maxBarrelContent);
         refillInventory(trappedChestLocations, "trapped-chest-items", itemsConfig, minTrappedChestContent, maxTrappedChestContent);
-        refillInventory(deserializeLocations(chestLocationsConfig, "ender-chests-locations"),
+        refillInventory(deserializeLocations(chestLocationsConfig, "ender-chests-locations", world),
                 itemsConfig.contains("ender-chest-items") ? "ender-chest-items" : "trapped-chest-items",
                 itemsConfig, minTrappedChestContent, maxTrappedChestContent);
 
@@ -73,11 +72,18 @@ public class ChestRefillHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Location> deserializeLocations(FileConfiguration config, String key) {
-        List<Map<?, ?>> serializedLocations = config.getMapList(key);
-        return serializedLocations.stream()
-                .map(locationMap -> Location.deserialize((Map<String, Object>) locationMap))
-                .collect(Collectors.toList());
+    private List<Location> deserializeLocations(FileConfiguration config, String key, World world) {
+        List<Location> locations = new ArrayList<>();
+        for (Map<?, ?> entry : config.getMapList(key)) {
+            try {
+                Location location = Location.deserialize((Map<String, Object>) entry);
+                if (!world.equals(location.getWorld())) throw new IllegalArgumentException("Location belongs to another world");
+                locations.add(location);
+            } catch (IllegalArgumentException ex) {
+                plugin.getLogger().warning("Arena " + world.getName() + ": invalid " + key + " entry " + entry + ": " + ex.getMessage());
+            }
+        }
+        return locations;
     }
 
     @SuppressWarnings("unchecked")
@@ -87,6 +93,13 @@ public class ChestRefillHandler {
 
     @SuppressWarnings("unchecked")
     void refillInventory(List<Location> locations, String itemKey, YamlConfiguration itemsConfig, int minContent, int maxContent, Random rand) {
+        if (minContent < 0 || maxContent < minContent) throw new IllegalArgumentException("Invalid loot range for " + itemKey);
+        List<Map<?, ?>> itemsMapList = itemsConfig.getMapList(itemKey);
+        if (itemsMapList.isEmpty() && !locations.isEmpty()) {
+            plugin.getLogger().warning("No loot configured for " + itemKey + "; existing inventories preserved.");
+            return;
+        }
+        Set<Map<?, ?>> invalidEntries = new HashSet<>();
         Set<ChestIdentity> filledChests = new HashSet<>();
 	    for (Location location : locations) {
             Block block = location.getBlock();
@@ -105,19 +118,27 @@ public class ChestRefillHandler {
                 continue;
             }
 
-            List<Map<?, ?>> itemsMapList = (List<Map<?, ?>>) itemsConfig.getList(itemKey);
-
-            assert itemsMapList != null;
-            List<ItemStack> items = itemsMapList.stream()
-                    .filter(itemMap -> !itemMap.containsKey("chance"))
-                    .flatMap(itemMap -> {
+            List<ItemStack> items = new ArrayList<>();
+            List<ItemStack> bonuses = new ArrayList<>();
+            boolean hasValidEntry = false;
+            for (Map<?, ?> itemMap : itemsMapList) {
+                if (invalidEntries.contains(itemMap)) continue;
+                try {
+                    ItemStack item = createItem(itemMap, rand);
+                    if (itemMap.containsKey("chance")) {
+                        if (rollChance(itemMap, rand)) bonuses.add(item);
+                    } else {
                         int weight = itemMap.get("weight") instanceof Number value ? value.intValue() : 1;
-                        return Collections.nCopies(weight, createItem(itemMap, rand)).stream();
-                    })
-                    .collect(Collectors.toList());
-
-            blockInventory.clear();
-
+                        if (weight < 0 || weight > 10000) throw new IllegalArgumentException("Weight must be between 0 and 10000");
+                        items.addAll(Collections.nCopies(weight, item));
+                    }
+                    hasValidEntry = true;
+                } catch (RuntimeException ex) {
+                    invalidEntries.add(itemMap);
+                    plugin.getLogger().warning("Invalid loot in " + itemKey + " (" + itemMap + "): " + ex.getMessage());
+                }
+            }
+            if (!hasValidEntry) continue;
 
             int inventorySize = rand.nextInt(maxContent - minContent + 1) + minContent;
             Collections.shuffle(items, rand);
@@ -126,12 +147,9 @@ public class ChestRefillHandler {
             items = "chest-items".equals(itemKey) && itemsConfig.getBoolean("ensure-weapon-and-food", true)
                     ? balancedSelection(items, inventorySize) : new ArrayList<>(items.subList(0, inventorySize));
             // Percent chances are rolled once per container, independently of weighted loot.
-            for (Map<?, ?> itemMap : itemsMapList) {
-                if (itemMap.containsKey("chance") && rollChance(itemMap, rand)) {
-                    items.add(createItem(itemMap, rand));
-                }
-            }
+            items.addAll(bonuses);
             inventorySize = Math.min(items.size(), blockInventory.getSize());
+            blockInventory.clear();
 
             int addedItems = 0;
             int totalSlots = blockInventory.getSize();
@@ -148,9 +166,14 @@ public class ChestRefillHandler {
 
     @SuppressWarnings("unchecked")
     ItemStack createItem(Map<?, ?> itemMap, Random rand) {
-        String type = (String) itemMap.get("type");
+        String type = Objects.requireNonNull((String) itemMap.get("type"), "Missing item type").toUpperCase(Locale.ROOT);
+        Material configuredMaterial = Material.getMaterial(type);
+        if (configuredMaterial == null || !configuredMaterial.isItem() || configuredMaterial.isAir()) {
+            throw new IllegalArgumentException("Unknown item material: " + type);
+        }
 
         int amount = rollAmount(itemMap, rand);
+        if (amount < 1 || amount > 64) throw new IllegalArgumentException("Item amount must be between 1 and 64");
 
         ItemStack item;
 
@@ -158,11 +181,10 @@ public class ChestRefillHandler {
             item = new ItemStack(Objects.requireNonNull(Material.getMaterial(type)), amount);
             PotionMeta potionMeta = (PotionMeta) item.getItemMeta();
             String potionType = (String) itemMap.get("potion-type");
-            Integer levelObj = (Integer) itemMap.get("level");
-            int level = (levelObj != null) ? levelObj : 1;
+            int level = itemMap.get("level") instanceof Number value ? value.intValue() : 1;
             boolean extended = itemMap.containsKey("extended") && (boolean) itemMap.get("extended");
             assert potionMeta != null;
-            potionMeta.setBasePotionData(new PotionData(PotionType.valueOf(potionType), extended, level > 1));
+            potionMeta.setBasePotionType(resolvePotionType(potionType, extended, level));
             item.setItemMeta(potionMeta);
         } else if (itemMap.containsKey("enchantments") || itemMap.containsKey("random-enchantments")) {
             Material material = Material.getMaterial(type);
@@ -177,7 +199,7 @@ public class ChestRefillHandler {
                     if (enchantObj instanceof Map<?, ?> enchantMap) {
                         String enchantmentType = (String) enchantMap.get("type");
                         int level = (int) enchantMap.get("level");
-                        Enchantment enchantment = Enchantment.getByKey(NamespacedKey.minecraft(enchantmentType.toLowerCase()));
+                        Enchantment enchantment = Enchantment.getByKey(NamespacedKey.minecraft(enchantmentType.toLowerCase(java.util.Locale.ROOT)));
                         if (enchantment != null) {
                             if (material == Material.ENCHANTED_BOOK) {
                                 EnchantmentStorageMeta enchantmentStorageMeta = (EnchantmentStorageMeta) item.getItemMeta();
@@ -266,6 +288,25 @@ public class ChestRefillHandler {
         return item;
     }
 
+    // Keep migrated items.yml files working with the potion names used before 1.20.5.
+    static PotionType resolvePotionType(String name, boolean extended, int level) {
+        String type = Objects.requireNonNull(name, "Missing potion-type").toUpperCase(Locale.ROOT);
+        type = switch (type) {
+            case "SPEED" -> "SWIFTNESS";
+            case "JUMP" -> "LEAPING";
+            case "INSTANT_HEAL" -> "HEALING";
+            case "INSTANT_DAMAGE" -> "HARMING";
+            case "REGEN" -> "REGENERATION";
+            default -> type;
+        };
+        if (!type.startsWith("LONG_") && !type.startsWith("STRONG_")) {
+            if (extended && level > 1) throw new IllegalArgumentException("Potion cannot be both extended and upgraded");
+            if (extended) type = "LONG_" + type;
+            else if (level > 1) type = "STRONG_" + type;
+        }
+        return PotionType.valueOf(type);
+    }
+
     static int rollAmount(Map<?, ?> itemMap, Random random) {
         Object amount = itemMap.get("amount");
         if (amount instanceof Map<?, ?> range) {
@@ -300,7 +341,7 @@ public class ChestRefillHandler {
     }
 
     public Color getColorByName(String colorName) {
-        return switch (colorName.toUpperCase()) {
+        return switch (colorName.toUpperCase(java.util.Locale.ROOT)) {
             case "ORANGE" -> Color.ORANGE;
             case "MAGENTA", "PINK" -> Color.FUCHSIA;
             case "LIGHT_BLUE" -> Color.AQUA;

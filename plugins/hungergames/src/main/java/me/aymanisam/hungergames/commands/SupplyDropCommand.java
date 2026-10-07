@@ -56,7 +56,10 @@ public class SupplyDropCommand implements CommandExecutor {
             world = player.getWorld();
         }
 
-        assert world != null;
+        if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
 
         supplyDropHandler.setSupplyDrop(world);
 

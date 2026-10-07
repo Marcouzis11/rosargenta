@@ -44,6 +44,7 @@ public class SignHandler {
 			List<Player> worldPlayersAlive = playersAlive.computeIfAbsent(worldName, k -> new ArrayList<>());
 
 			Location location = entry.getValue();
+            if (location.getWorld() == null || worldName == null) continue;
 			if (location.getBlock().getState() instanceof Sign sign) {
 				sign.setEditable(false);
 				SignSide frontSide = sign.getSide(Side.FRONT);

@@ -8,6 +8,9 @@ import org.bukkit.entity.Player;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -44,18 +47,21 @@ public class LangHandler {
     }
 
     public void loadLanguageConfigs() {
+        normalizeFileNames();
+        saveLanguageFiles();
         File langFolder = new File(plugin.getDataFolder(), "lang");
-        File[] langFiles = langFolder.listFiles(((dir, name) -> name.endsWith(".yml")));
-
+        File[] langFiles = langFolder.listFiles(file -> file.isFile() && file.getName().endsWith(".yml")
+                && file.getName().equals(normalizeLocale(file.getName())));
+        langConfigs.clear();
         if (langFiles == null) {
-            saveLanguageFiles();
+            plugin.getLogger().severe("Could not read language directory: " + langFolder);
+            return;
         }
-
-        assert langFiles != null;
+        Arrays.sort(langFiles, Comparator.comparing(File::getName));
         for (File langFile : langFiles) {
             String locale = langFile.getName().replace(".yml", "");
             YamlConfiguration langConfig = YamlConfiguration.loadConfiguration(langFile);
-            langConfigs.put(locale.toLowerCase(), langConfig);
+            langConfigs.put(normalizeLocale(locale), langConfig);
         }
     }
 
@@ -64,19 +70,19 @@ public class LangHandler {
             loadLanguageConfigs();
         }
 
-        String locale = player.getLocale();
+        String locale = normalizeLocale(player.getLocale());
         if (langConfigs.containsKey(locale)) {
             return langConfigs.get(locale);
         }
 
         String languageOnly = locale.split("_")[0];
-        for (String key : langConfigs.keySet()) {
+        for (String key : new TreeSet<>(langConfigs.keySet())) {
             if (key.startsWith(languageOnly + "_")) {
                 return langConfigs.get(key);
             }
         }
 
-        return langConfigs.get(plugin.getConfigHandler().getPluginSettings().getString("default-language"));
+        return getLangConfig();
     }
 
     public YamlConfiguration getLangConfig() {
@@ -84,9 +90,10 @@ public class LangHandler {
             loadLanguageConfigs();
         }
 
-        YamlConfiguration config = langConfigs.get(plugin.getConfigHandler().getPluginSettings().getString("default-language"));
+        YamlConfiguration config = langConfigs.get(defaultLocale());
         if (config == null) {
-            config = new YamlConfiguration();
+            config = langConfigs.get("en_us");
+            if (config == null) config = bundledLanguage("en_us");
         }
 
         return config;
@@ -118,15 +125,25 @@ public class LangHandler {
 
     public void normalizeFileNames() {
         File langFolder = new File(plugin.getDataFolder(), "lang");
-        for (File langFile : Objects.requireNonNull(langFolder.listFiles())) {
+        File[] files = langFolder.listFiles();
+        if (files == null) return;
+        for (File langFile : files) {
+            if (!langFile.isFile() || !langFile.getName().toLowerCase(Locale.ROOT).endsWith(".yml")) continue;
             String langFileName = langFile.getName();
-            if (!langFileName.equals(langFileName.toLowerCase(Locale.ROOT))) {
-                String newFileName = langFileName.toLowerCase(Locale.ROOT);
+            String newFileName = normalizeLocale(langFileName);
+            if (!langFileName.equals(newFileName)) {
                 File newFile = new File(langFolder, newFileName);
-                if (langFile.renameTo(newFile)) {
-                    plugin.getLogger().log(Level.WARNING, "Migrated legacy language file " + langFileName + " → " + newFileName);
-                } else {
-                    plugin.getLogger().log(Level.SEVERE, "Could not rename legacy language file" + langFileName);
+                try {
+                    // Linux permits both names. Never replace an existing custom translation.
+                    if (newFile.exists() && !Files.isSameFile(langFile.toPath(), newFile.toPath())) {
+                        plugin.getLogger().warning("Language files conflict: " + langFileName + " and " + newFileName
+                                + "; keeping both and using " + newFileName);
+                        continue;
+                    }
+                    Files.move(langFile.toPath(), newFile.toPath());
+                    plugin.getLogger().warning("Migrated legacy language file " + langFileName + " → " + newFileName);
+                } catch (IOException e) {
+                    plugin.getLogger().log(Level.SEVERE, "Could not rename legacy language file " + langFileName, e);
                 }
             }
         }
@@ -140,8 +157,8 @@ public class LangHandler {
         }
 
         for (File langFile : langFiles) {
-            String pluginLang = plugin.getConfigHandler().getPluginSettings().getString("default-language");
-            YamlConfiguration pluginLangConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(Objects.requireNonNull(this.getClass().getClassLoader().getResourceAsStream("lang/" + pluginLang + ".yml"))));
+            String locale = langFile.getName().substring(0, langFile.getName().length() - 4);
+            YamlConfiguration pluginLangConfig = bundledLanguage(normalizeLocale(locale));
             YamlConfiguration langConfig = YamlConfiguration.loadConfiguration(langFile);
             boolean updated = false;
 
@@ -159,6 +176,26 @@ public class LangHandler {
                     plugin.getLogger().log(Level.SEVERE, "No permission to create folders", e);
                 }
             }
+        }
+    }
+
+    private String defaultLocale() {
+        return normalizeLocale(plugin.getConfigHandler().getPluginSettings().getString("default-language", "en_us"));
+    }
+
+    private static String normalizeLocale(String locale) {
+        return locale == null ? "en_us" : locale.trim().replace('-', '_').toLowerCase(Locale.ROOT);
+    }
+
+    private YamlConfiguration bundledLanguage(String locale) {
+        InputStream resource = plugin.getResource("lang/" + locale + ".yml");
+        if (resource == null) resource = plugin.getResource("lang/en_us.yml");
+        if (resource == null) return new YamlConfiguration();
+        try (InputStreamReader reader = new InputStreamReader(resource, StandardCharsets.UTF_8)) {
+            return YamlConfiguration.loadConfiguration(reader);
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.WARNING, "Could not read bundled language " + locale, e);
+            return new YamlConfiguration();
         }
     }
 }

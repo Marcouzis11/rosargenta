@@ -57,7 +57,10 @@ public class SaveWorldCommand implements CommandExecutor {
             world = player.getWorld();
         }
 
-        assert world != null;
+        if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
 
         if (!hgWorldNames.contains(world.getName())) { sender.sendMessage("§cEste mundo no es una arena."); return true; }
         try {

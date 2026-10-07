@@ -13,6 +13,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Base64;
@@ -29,39 +30,21 @@ public class DisplayStatsHandler {
 
 	public void displayPlayerHead(Player player) {
 		player.sendMessage(langHandler.getMessage(player, "stats.player", player.getName()));
-
-		String uuid = getPlayerUUID(player.getName());
-		if (uuid == null) {
-			player.sendMessage("Could not fetch player UUID.");
-			return;
-		}
-
-		String skinUrl = getPlayerSkinUrl(uuid);
-		if (skinUrl == null) {
-			player.sendMessage("Could not fetch player skin.");
-			return;
-		}
-
-		BufferedImage playerHead = getPlayerHead(skinUrl);
-		if (playerHead == null) {
-			player.sendMessage("Could not load player head.");
-			return;
-		}
-
-		BaseComponent[] headComponent = getHeadAsTextComponent(playerHead);
-		player.spigot().sendMessage(headComponent);
+        String name = player.getName();
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            String uuid = getPlayerUUID(name);
+            String skinUrl = uuid == null ? null : getPlayerSkinUrl(uuid);
+            BufferedImage head = skinUrl == null ? null : getPlayerHead(skinUrl);
+            if (!plugin.isEnabled()) return;
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline() && head != null) player.spigot().sendMessage(getHeadAsTextComponent(head));
+            });
+        });
 	}
 
 	private String getPlayerUUID(String username) {
 		try {
-			URL url = new URL("https://api.mojang.com/users/profiles/minecraft/" + username);
-			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-			connection.setRequestMethod("GET");
-			connection.setRequestProperty("Accept", "application/json");
-
-			InputStreamReader reader = new InputStreamReader(connection.getInputStream());
-			JsonObject jsonObj = JsonParser.parseReader(reader).getAsJsonObject();
-			reader.close();
+            JsonObject jsonObj = readJson("https://api.mojang.com/users/profiles/minecraft/" + username);
 
 			return jsonObj.get("id").getAsString();
 		} catch (Exception e) {
@@ -72,16 +55,11 @@ public class DisplayStatsHandler {
 
 	private String getPlayerSkinUrl(String uuid) {
 		try {
-			URL url = new URL("https://sessionserver.mojang.com/session/minecraft/profile/" + uuid);
-			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-			connection.setRequestMethod("GET");
-			connection.setRequestProperty("Accept", "application/json");
-
-			JsonObject jsonObj = JsonParser.parseReader(new InputStreamReader(connection.getInputStream())).getAsJsonObject();
+            JsonObject jsonObj = readJson("https://sessionserver.mojang.com/session/minecraft/profile/" + uuid);
 			JsonObject properties = jsonObj.getAsJsonArray("properties").get(0).getAsJsonObject();
 			String base64Value = properties.get("value").getAsString();
 
-			String decoded = new String(Base64.getDecoder().decode(base64Value));
+			String decoded = new String(Base64.getDecoder().decode(base64Value), StandardCharsets.UTF_8);
 			JsonObject textureJson = JsonParser.parseString(decoded).getAsJsonObject();
 
 			return textureJson.getAsJsonObject("textures").getAsJsonObject("SKIN").get("url").getAsString();
@@ -92,14 +70,34 @@ public class DisplayStatsHandler {
 	}
 
 	private BufferedImage getPlayerHead(String imageUrl) {
-		try (InputStream in = new URL(imageUrl).openStream()) {
-			BufferedImage skin = ImageIO.read(in);
-			return skin.getSubimage(8,8, 8, 8);
+        HttpURLConnection connection = null;
+        try {
+            connection = openConnection(imageUrl);
+            try (InputStream in = connection.getInputStream()) {
+                BufferedImage skin = ImageIO.read(in);
+                return skin == null ? null : skin.getSubimage(8, 8, 8, 8);
+            }
 		} catch (Exception e) {
 			plugin.getLogger().log(Level.WARNING, "Failed to download player skin: " + e.getMessage(), e);
 			return null;
-		}
+		} finally { if (connection != null) connection.disconnect(); }
 	}
+
+    private static HttpURLConnection openConnection(String address) throws java.io.IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(5000);
+        connection.setRequestMethod("GET");
+        return connection;
+    }
+
+    private static JsonObject readJson(String address) throws java.io.IOException {
+        HttpURLConnection connection = openConnection(address);
+        connection.setRequestProperty("Accept", "application/json");
+        try (InputStreamReader reader = new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)) {
+            return JsonParser.parseReader(reader).getAsJsonObject();
+        } finally { connection.disconnect(); }
+    }
 
 	private BaseComponent[] getHeadAsTextComponent(BufferedImage headImage) {
 		if (headImage == null) return new ComponentBuilder("⚠ Could not load head").create();

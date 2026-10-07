@@ -25,13 +25,15 @@ public class VersionHandler {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 JSONParser parser = new JSONParser();
-                JSONObject jsonResponse = (JSONObject) parser.parse(response.body());
-                return (String) jsonResponse.get("name");
-            } else {
-                return "Failed to get version: " + response.statusCode();
+                Object parsed = parser.parse(response.body());
+                if (parsed instanceof JSONObject jsonResponse && jsonResponse.get("name") instanceof String version
+                        && !version.isBlank()) return version;
             }
-        } catch (IOException | InterruptedException | ParseException e) {
-            return "Error: " + e.getMessage();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException | ParseException e) {
+            return null;
         }
+        return null;
     }
 }

@@ -92,7 +92,10 @@ public class JoinGameCommand implements CommandExecutor {
 
         if (world == null) {
             World createdWorld = Bukkit.createWorld(WorldCreator.name(worldName));
-            assert createdWorld != null;
+            if (createdWorld == null) {
+                player.sendMessage("§cNo se pudo cargar la arena. Revisá la consola del servidor.");
+                return true;
+            }
             arenaHandler.loadWorldFiles(createdWorld);
             List<Player> worldPlayersWaiting = setSpawnHandler.playersWaiting.computeIfAbsent(worldName, k -> new ArrayList<>());
             if (worldPlayersWaiting.contains(player)) {
@@ -126,19 +129,12 @@ public class JoinGameCommand implements CommandExecutor {
     }
 
     public static boolean isPlayerInGame(Player player) {
-        for (List<Player> players : playersAlive.values()) {
-            if (players.contains(player)) {
-                return true;
-            }
-        }
-
-        for (Map<String, Player> players : spawnPointMap.values()) {
-            if (players.containsValue(player)) {
-                return true;
-            }
-        }
-
-        return false;
+        String worldName = player.getWorld().getName();
+        boolean active = isGameStartingOrStarted(worldName)
+                && playersAlive.getOrDefault(worldName, List.of()).stream()
+                .anyMatch(registered -> ParticipationHandler.samePlayer(registered, player));
+        return active || spawnPointMap.getOrDefault(worldName, Map.of()).values().stream()
+                .anyMatch(registered -> ParticipationHandler.samePlayer(registered, player));
     }
 
     public static boolean isPlayerInAnyCustomTeam(Player player) {

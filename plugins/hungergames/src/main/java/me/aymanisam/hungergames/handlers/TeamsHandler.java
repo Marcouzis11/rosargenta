@@ -27,7 +27,7 @@ public class TeamsHandler {
         this.langHandler = langHandler;
 
         PacketAdapter adapter;
-        if (plugin.getServer().getPluginManager().getPlugin("PacketEvents") != null) {
+        if (plugin.getServer().getPluginManager().isPluginEnabled("packetevents")) {
             adapter = new PacketEventsAdapter();
         } else {
             adapter = new DummyPacketAdapter();
@@ -95,7 +95,7 @@ public class TeamsHandler {
         double newMaxHealth = 20.0 * ratio;
         int newMaxHealthRounded = (int) Math.round(newMaxHealth);
         for (Player player : team) {
-            Objects.requireNonNull(player.getAttribute(Attribute.GENERIC_MAX_HEALTH)).setBaseValue(newMaxHealthRounded);
+            Objects.requireNonNull(player.getAttribute(Attribute.MAX_HEALTH)).setBaseValue(newMaxHealthRounded);
             player.setHealth(newMaxHealthRounded);
         }
     }
@@ -120,7 +120,7 @@ public class TeamsHandler {
         ItemMeta meta = item.getItemMeta();
         assert meta != null;
         meta.setDisplayName(langHandler.getMessage(player, "team.compass-teammate"));
-        meta.addEnchant(Enchantment.DURABILITY, 1, true);
+        meta.addEnchant(Enchantment.UNBREAKING, 1, true);
         List<String> lore = new ArrayList<>();
         lore.add(langHandler.getMessage(player, "team.compass-click"));
         lore.add(langHandler.getMessage(player, "team.compass-shift-click"));

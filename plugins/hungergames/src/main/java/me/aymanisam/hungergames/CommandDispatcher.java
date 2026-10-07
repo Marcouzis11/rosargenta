@@ -43,7 +43,7 @@ public class CommandDispatcher implements CommandExecutor, TabCompleter {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length > 0) {
             CommandExecutor executor;
-            switch (args[0].toLowerCase()) {
+            switch (args[0].toLowerCase(java.util.Locale.ROOT)) {
                 case "config":
                     executor = new ArenaAdminCommand(plugin, false);
                     break;
@@ -123,14 +123,14 @@ public class CommandDispatcher implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length == 1 && sender.hasPermission("hungergames.config")) {
             List<String> result = new ArrayList<>(List.of("config", "loot", "saveworld", "scanarena", "start", "end", "join", "lobby", "spectate"));
-            result.removeIf(value -> !value.startsWith(args[0].toLowerCase()));
+            result.removeIf(value -> !value.startsWith(args[0].toLowerCase(java.util.Locale.ROOT)));
             return result;
         }
         if (args.length >= 2 && (args[0].equalsIgnoreCase("config") || args[0].equalsIgnoreCase("loot")) && sender.hasPermission("hungergames.config")) {
             if (args.length == 2) return hgWorldNames.stream().filter(name -> name.startsWith(args[1])).toList();
             if (args.length == 3) return args[0].equalsIgnoreCase("config") ? List.of("resumen", "validar", "restaurar", "tiempo", "borde", "proteccion") : List.of("normal", "especial", "drop");
             if (args[0].equalsIgnoreCase("loot") && args.length == 4) return Arrays.stream(org.bukkit.Material.values())
-                    .filter(org.bukkit.Material::isItem).map(Enum::name).filter(name -> name.startsWith(args[3].toUpperCase())).toList();
+                    .filter(org.bukkit.Material::isItem).map(Enum::name).filter(name -> name.startsWith(args[3].toUpperCase(java.util.Locale.ROOT))).toList();
             return List.of();
         }
         if (sender instanceof Player player) {

@@ -52,6 +52,7 @@ public class ScoreBoardHandler {
         if (!configHandler.getWorldConfig(player.getWorld()).getBoolean("display-scoreboard")) {
             return;
         }
+        removeScoreboard(player);
         FastBoard board = new FastBoard(player);
         if (configHandler.getWorldConfig(player.getWorld()).getInt("players-per-team", 1) == 1) {
             board.updateTitle(langHandler.getMessage(player, "score.name-solo"));
@@ -60,13 +61,17 @@ public class ScoreBoardHandler {
         }
 
         boards.put(player.getUniqueId(), board);
+        updateBoard(board, player.getWorld());
     }
 
     public void updateBoard(FastBoard board, World world) {
         if (board == null || !configHandler.getWorldConfig(world).getBoolean("display-scoreboard")) {
             return;
         }
+        board.updateLines(linesFor(board.getPlayer(), world));
+    }
 
+    List<String> linesFor(Player player, World world) {
         FileConfiguration worldConfig = configHandler.getWorldConfig(world);
         int gameTimeConfig = worldConfig.getInt("game-time");
         int pvpTimeConfig = worldConfig.getInt("grace-period");
@@ -74,13 +79,13 @@ public class ScoreBoardHandler {
         int supplyDropInterval = worldConfig.getInt("supplydrop.interval");
         int borderStartSize = worldConfig.getInt("border.size");
 
-        int worldTimeLeft = timeLeft.get(world.getName());
+        int worldTimeLeft = timeLeft.getOrDefault(world.getName(), gameTimeConfig);
         int worldPlayersAliveSize = ParticipationHandler.count(playersAlive.getOrDefault(world.getName(), List.of()));
-        int worldStartingPlayers = startingPlayers.get(world.getName()).size();
+        int worldStartingPlayers = startingPlayers.getOrDefault(world.getName(), List.of()).size();
         int worldBorderSize = (int) world.getWorldBorder().getSize();
         int pvpTimeLeft = (worldTimeLeft - gameTimeConfig) + pvpTimeConfig;
-        int chestRefillTimeLeft = worldTimeLeft % chestRefillInterval;
-        int supplyDropTimeLeft = worldTimeLeft % supplyDropInterval;
+        int chestRefillTimeLeft = chestRefillInterval > 0 ? worldTimeLeft % chestRefillInterval : 0;
+        int supplyDropTimeLeft = supplyDropInterval > 0 ? worldTimeLeft % supplyDropInterval : 0;
         ChatColor borderColor;
 
         if (borderStartSize == worldBorderSize) {
@@ -94,36 +99,36 @@ public class ScoreBoardHandler {
         List<String> lines = new ArrayList<>();
 
         lines.add("");
-        lines.add(langHandler.getMessage(board.getPlayer(), "score.alive", getColor(worldStartingPlayers, worldPlayersAliveSize).toString() + worldPlayersAliveSize));
+        lines.add(langHandler.getMessage(player, "score.alive", getColor(worldStartingPlayers, worldPlayersAliveSize).toString() + worldPlayersAliveSize));
         Map<Player, Integer> worldPlayerKills = playerKills.computeIfAbsent(world.getName(), k -> new HashMap<>());
-        lines.add(langHandler.getMessage(board.getPlayer(), "score.kills", ChatColor.RED + worldPlayerKills.computeIfAbsent(board.getPlayer(), k -> 0).toString()));
-        lines.add(langHandler.getMessage(board.getPlayer(), "score.border", borderColor.toString() + worldBorderSize));
+        lines.add(langHandler.getMessage(player, "score.kills", ChatColor.RED + worldPlayerKills.computeIfAbsent(player, k -> 0).toString()));
+        lines.add(langHandler.getMessage(player, "score.border", borderColor.toString() + worldBorderSize));
         lines.add("");
         boolean deathmatch = deathmatchWorlds.contains(world.getName());
-        lines.add(deathmatch ? langHandler.getMessage(board.getPlayer(), "game.deathmatch-title")
-                : formatScore(board.getPlayer(), "score.time", worldTimeLeft, gameTimeConfig));
+        lines.add(deathmatch ? langHandler.getMessage(player, "game.deathmatch-title")
+                : formatScore(player, "score.time", worldTimeLeft, gameTimeConfig));
 
         if (!deathmatch && pvpTimeLeft >= 0) {
-            lines.add(formatScore(board.getPlayer(), "score.pvp", pvpTimeLeft, pvpTimeConfig));
+            lines.add(formatScore(player, "score.pvp", pvpTimeLeft, pvpTimeConfig));
         }
 
         lines.add("");
         if (!deathmatch) {
-            lines.add(formatScore(board.getPlayer(), "score.chestrefill", chestRefillTimeLeft, chestRefillInterval));
-            String supplyLine = formatScore(board.getPlayer(), "score.supplydrop", supplyDropTimeLeft, supplyDropInterval);
+            lines.add(formatScore(player, "score.chestrefill", chestRefillTimeLeft, chestRefillInterval));
+            String supplyLine = formatScore(player, "score.supplydrop", supplyDropTimeLeft, supplyDropInterval);
             SupplyDropTracker tracker = plugin.getSupplyDropTracker();
-            if (tracker != null) supplyLine += tracker.directionFor(board.getPlayer());
+            if (tracker != null) supplyLine += tracker.directionFor(player);
             lines.add(supplyLine);
         }
 
-        String teamScoreBoard = getScoreBoardTeam(board.getPlayer(), world);
+        String teamScoreBoard = getScoreBoardTeam(player, world);
 
         if (teamScoreBoard != null) {
             lines.add("");
             lines.add(teamScoreBoard);
         }
 
-        board.updateLines(lines);
+        return lines;
     }
 
     private String getScoreBoardTeam(Player player, World world) {

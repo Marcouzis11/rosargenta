@@ -36,14 +36,16 @@ public class WorldResetHandler {
         File worldDirectory = world.getWorldFolder();
         File templateDirectory = new File(plugin.getDataFolder(), "templates" + File.separator + world.getName());
 
-        if (!templateDirectory.exists()) {
-            if (!templateDirectory.mkdirs()) {
-                plugin.getLogger().log(Level.SEVERE, "Could not create templates directory");
-            }
+        boolean autoSave = world.isAutoSave();
+        try {
+            Files.createDirectories(templateDirectory.toPath().getParent());
+            requireSafePaths(worldDirectory, templateDirectory);
+            world.save();
+            world.setAutoSave(false);
+        } catch (IOException | RuntimeException e) {
+            busyWorlds.remove(world.getName());
+            throw new IllegalStateException("No se pudo preparar la plantilla de " + world.getName(), e);
         }
-
-        world.save();
-        world.setAutoSave(false);
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -69,7 +71,7 @@ public class WorldResetHandler {
                 plugin.getLogger().log(Level.SEVERE, "No se pudo guardar la plantilla", e);
             } finally {
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    world.setAutoSave(true);
+                    world.setAutoSave(autoSave);
                     busyWorlds.remove(world.getName());
                 });
             }
@@ -122,11 +124,14 @@ public class WorldResetHandler {
 
     static void restoreFiles(File world, File template) throws IOException {
         requireSafePaths(world, template);
+        world = world.getCanonicalFile();
+        template = template.getCanonicalFile();
         if (!new File(template, "level.dat").isFile()) throw new IOException("Plantilla incompleta");
-        File staging = new File(template.getParentFile(), world.getName() + "-hg-restoring");
-        File previous = new File(template.getParentFile(), world.getName() + "-hg-previous");
-        requireChild(template.getParentFile(), staging);
-        requireChild(template.getParentFile(), previous);
+        // Rename on the world's filesystem, even if plugins/templates is on another mount.
+        File staging = new File(world.getParentFile(), "." + world.getName() + "-hg-restoring");
+        File previous = new File(world.getParentFile(), "." + world.getName() + "-hg-previous");
+        requireChild(world.getParentFile(), staging);
+        requireChild(world.getParentFile(), previous);
         if (staging.exists()) FileUtils.deleteDirectory(staging);
         FileUtils.copyDirectory(template, staging, file -> !Set.of("session.lock", "uid.dat", "session.dat").contains(file.getName()));
         // Keep the world UUID so saved chest locations and other plugins still resolve it.

@@ -5,6 +5,9 @@ import org.bukkit.entity.Player;
 import java.util.*;
 
 public final class ParticipationHandler {
+    public static boolean samePlayer(Player first, Player second) {
+        return first.equals(second) || (first.getUniqueId() != null && first.getUniqueId().equals(second.getUniqueId()));
+    }
     public static boolean countsAsPlayer(Player player) {
         return player.getGameMode() != org.bukkit.GameMode.SPECTATOR;
     }
@@ -23,7 +26,8 @@ public final class ParticipationHandler {
         String name = world.getName();
         boolean active = me.aymanisam.hungergames.HungerGames.isGameStartingOrStarted(name)
                 && !GameSequenceHandler.celebratingWorlds.contains(name);
-        boolean alive = GameSequenceHandler.playersAlive.getOrDefault(name, new ArrayList<>()).remove(player);
+        boolean alive = GameSequenceHandler.playersAlive.getOrDefault(name, new ArrayList<>())
+                .removeIf(registered -> samePlayer(registered, player));
         if (alive && active) {
             List<Player> placements = GameSequenceHandler.playerPlacements.computeIfAbsent(name, k -> new ArrayList<>());
             if (!placements.contains(player)) placements.add(player);
@@ -31,10 +35,10 @@ public final class ParticipationHandler {
         List<List<Player>> teams = TeamsHandler.teamsAlive.getOrDefault(name, new ArrayList<>());
         for (Iterator<List<Player>> iterator = teams.iterator(); iterator.hasNext();) {
             List<Player> team = iterator.next();
-            if (team.remove(player) && team.isEmpty()) {
+            if (team.removeIf(registered -> samePlayer(registered, player)) && team.isEmpty()) {
                 iterator.remove();
                 for (List<Player> original : TeamsHandler.teams.getOrDefault(name, List.of())) {
-                    if (active && original.contains(player)) GameSequenceHandler.teamPlacements.computeIfAbsent(name, k -> new ArrayList<>()).add(original);
+                    if (active && original.stream().anyMatch(registered -> samePlayer(registered, player))) GameSequenceHandler.teamPlacements.computeIfAbsent(name, k -> new ArrayList<>()).add(original);
                 }
             }
         }

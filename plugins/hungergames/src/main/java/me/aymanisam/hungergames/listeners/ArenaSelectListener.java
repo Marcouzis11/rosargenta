@@ -58,6 +58,6 @@ public class ArenaSelectListener implements Listener {
 
     @EventHandler
     public void onPrepareAnvil(PrepareAnvilEvent event) {
-        event.getInventory().setRepairCost(0);
+        event.getView().setRepairCost(0);
     }
 }

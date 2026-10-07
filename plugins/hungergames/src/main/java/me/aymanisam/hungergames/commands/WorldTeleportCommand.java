@@ -3,6 +3,7 @@ package me.aymanisam.hungergames.commands;
 import me.aymanisam.hungergames.HungerGames;
 import me.aymanisam.hungergames.handlers.ArenaHandler;
 import me.aymanisam.hungergames.handlers.LangHandler;
+import me.aymanisam.hungergames.handlers.WorldResetHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
@@ -70,10 +71,17 @@ public class WorldTeleportCommand implements CommandExecutor {
         }
 
         World world = Bukkit.getWorld(worldName);
+        if (WorldResetHandler.busyWorlds.contains(worldName)) {
+            sender.sendMessage("§eLa arena se está preparando. Esperá unos segundos.");
+            return true;
+        }
 
         if (world == null) {
             world = Bukkit.createWorld(WorldCreator.name(worldName));
-            assert world != null;
+            if (world == null) {
+                sender.sendMessage("§cNo se pudo cargar el mundo. Revisá la consola del servidor.");
+                return true;
+            }
             arenaHandler.loadWorldFiles(world);
         }
 
@@ -88,7 +96,7 @@ public class WorldTeleportCommand implements CommandExecutor {
         }
 
         Player p = Bukkit.getPlayer(playerToTeleport);
-        assert p != null;
+        if (p == null) return true;
         p.teleport(world.getSpawnLocation());
         p.sendMessage(langHandler.getMessage(p, "teleport.teleported", world.getName()));
 

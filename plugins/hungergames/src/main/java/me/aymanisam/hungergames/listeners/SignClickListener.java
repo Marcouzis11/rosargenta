@@ -60,6 +60,10 @@ public class SignClickListener implements Listener {
                         }
 
                         World world = Bukkit.getWorld(worldName);
+                        if (WorldResetHandler.busyWorlds.contains(worldName)) {
+                            player.sendMessage("§eLa arena se está preparando. Esperá unos segundos.");
+                            return;
+                        }
 
                         if (lastMessageTime.containsKey(player) && (currentTime - lastMessageTime.get(player)) < 500) {
                             return; // Don't send another message if within cooldown
@@ -81,7 +85,7 @@ public class SignClickListener implements Listener {
                             }
                         }
 
-                        if (worldSpawnPointMap.containsValue(player) || worldStartingPlayers.contains(player)) {
+                        if (me.aymanisam.hungergames.commands.JoinGameCommand.isPlayerInGame(player)) {
                             player.sendMessage(langHandler.getMessage(player, "game.already-joined"));
                             lastMessageTime.put(player, currentTime);
                             return;
@@ -101,7 +105,10 @@ public class SignClickListener implements Listener {
 
                         if (world == null) {
                             World createdWorld = Bukkit.createWorld(WorldCreator.name(worldName));
-                            assert createdWorld != null;
+                            if (createdWorld == null) {
+                                player.sendMessage("§cNo se pudo cargar la arena. Revisá la consola del servidor.");
+                                return;
+                            }
                             arenaHandler.loadWorldFiles(createdWorld);
                             if (setSpawnHandler.playersWaiting.get(createdWorld.getName()) != null && setSpawnHandler.playersWaiting.get(createdWorld.getName()).contains(player)) {
                                 return;

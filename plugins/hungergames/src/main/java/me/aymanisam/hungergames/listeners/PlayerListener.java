@@ -49,7 +49,7 @@ public class PlayerListener implements Listener {
         this.langHandler = langHandler;
         this.configHandler = plugin.getConfigHandler();
         this.signHandler = new SignHandler(plugin, setSpawnHandler);
-	    this.databaseHandler = new DatabaseHandler(plugin);
+	    this.databaseHandler = plugin.getDatabase();
         this.resetPlayerHandler = new ResetPlayerHandler();
     }
 
@@ -58,45 +58,36 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         event.setQuitMessage(null);
 
-        List<Player> worldPlayersWaiting = setSpawnHandler.playersWaiting.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
-        List<Player> worldPlayersAlive = playersAlive.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
-        List<Player> worldPlayersPlacement = playerPlacements.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
+        ParticipationHandler.leave(player, player.getWorld());
+        setSpawnHandler.removePlayerFromSpawnPoint(player, player.getWorld());
+        if (hgWorldNames.contains(player.getWorld().getName())) setSpawnHandler.checkEnoughPlayers(player.getWorld());
+        new ScoreBoardHandler(plugin, langHandler).removeScoreboard(player);
+        removeBossBar(player);
 
-        if (gameStarted.getOrDefault(player.getWorld().getName(), false) || gameStarting.getOrDefault(player.getWorld().getName(), false)) {
-            boolean wasAlive = worldPlayersAlive.remove(player);
-            if (wasAlive && !celebratingWorlds.contains(player.getWorld().getName()) && configHandler.getWorldConfig(player.getWorld()).getInt("players-per-team") == 1) {
-                worldPlayersPlacement.add(player);
+        if (plugin.isDatabaseEnabled()) {
+            UUID uuid = player.getUniqueId();
+            String name = player.getName();
+            Long accumulated = totalTimeSpent.remove(player);
+            long elapsed = accumulated == null ? 0 : accumulated;
+            if (accumulated != null && gameStarted.getOrDefault(player.getWorld().getName(), false)) {
+                elapsed += Math.max(0, configHandler.getWorldConfig(player.getWorld()).getInt("game-time")
+                        - timeLeft.getOrDefault(player.getWorld().getName(), 0));
             }
-        } else {
-            setSpawnHandler.removePlayerFromSpawnPoint(player, player.getWorld());
-            worldPlayersWaiting.remove(player);
-        }
-
-	    setSpawnHandler.checkEnoughPlayers(player.getWorld());
-
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            long playtime = elapsed;
 	        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
 		        try {
 			        PlayerStatsHandler playerStats;
-			        if (statsMap.containsKey(player.getUniqueId())) {
-				        playerStats = statsMap.get(player.getUniqueId());
+			        if (statsMap.containsKey(uuid)) {
+				        playerStats = statsMap.get(uuid);
 			        } else {
-				        playerStats = databaseHandler.getPlayerStatsFromDatabase(player);
-				        statsMap.put(player.getUniqueId(), playerStats);
+				        playerStats = databaseHandler.getPlayerStatsFromDatabase(uuid.toString(), name);
+				        statsMap.put(uuid, playerStats);
 			        }
 
 			        playerStats.setLastLogout(new Date());
 
-			        if (totalTimeSpent.containsKey(player)) {
-				        int timeAlive = 0;
-				        if (!player.getWorld().getName().equals(configHandler.getPluginSettings().getString("lobby-world"))) {
-					        timeAlive = configHandler.getWorldConfig(player.getWorld()).getInt("game-time") - timeLeft.get(player.getWorld().getName());
-				        }
-				        Long timeSpent = totalTimeSpent.getOrDefault(player, 0L);
-				        playerStats.setSecondsPlayed(playerStats.getSecondsPlayed() + timeAlive + timeSpent);
-				        playerStats.setSecondsPlayedMonth(playerStats.getSecondsPlayedMonth() + timeAlive + timeSpent);
-				        totalTimeSpent.remove(player);
-			        }
+                playerStats.setSecondsPlayed(playerStats.getSecondsPlayed() + playtime);
+                playerStats.setSecondsPlayedMonth(playerStats.getSecondsPlayedMonth() + playtime);
 
 			        playerStats.setDirty();
 
@@ -106,8 +97,6 @@ public class PlayerListener implements Listener {
 		        }
 	        });
         }
-
-        removeFromTeam(player);
 
         signHandler.setSignContent();
     }
@@ -130,27 +119,6 @@ public class PlayerListener implements Listener {
             }
             signHandler.setSignContent();
         });
-    }
-
-    private void removeFromTeam(Player player) {
-        List<List<Player>> worldTeams = teams.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
-        List<List<Player>> worldTeamsAlive = teamsAlive.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
-        List<List<Player>> worldTeamPlacements = teamPlacements.computeIfAbsent(player.getWorld().getName(), k -> new ArrayList<>());
-
-        for (List<Player> aliveTeam : worldTeamsAlive) {
-            if (aliveTeam.contains(player)) {
-                aliveTeam.remove(player);
-                if (aliveTeam.isEmpty()) {
-                    worldTeamsAlive.remove(aliveTeam);
-                    for (List<Player> team: worldTeams) {
-                        if (team.contains(player)) {
-                            worldTeamPlacements.add(team);
-                        }
-                    }
-                }
-                break;
-            }
-        }
     }
 
     @EventHandler
@@ -185,6 +153,13 @@ public class PlayerListener implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        // A reconnect creates a new Player object; clear registrations by UUID.
+        for (World arena : plugin.getServer().getWorlds()) {
+            if (!hgWorldNames.contains(arena.getName())) continue;
+            ParticipationHandler.leave(player, arena);
+            setSpawnHandler.removePlayerFromSpawnPoint(player, arena);
+            setSpawnHandler.checkEnoughPlayers(arena);
+        }
         String lobbyWorldName = configHandler.getPluginSettings().getString("lobby-world");
         assert lobbyWorldName != null;
         World lobbyWorld = Bukkit.getWorld(lobbyWorldName);
@@ -199,18 +174,20 @@ public class PlayerListener implements Listener {
         }
         event.setJoinMessage(null);
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
+            UUID uuid = player.getUniqueId();
+            String name = player.getName();
 			plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
 				try {
 					PlayerStatsHandler playerStats;
-					if (statsMap.containsKey(player.getUniqueId())) {
-						playerStats = statsMap.get(player.getUniqueId());
+					if (statsMap.containsKey(uuid)) {
+						playerStats = statsMap.get(uuid);
 					} else {
-						playerStats = databaseHandler.getPlayerStatsFromDatabase(player);
-						statsMap.put(player.getUniqueId(), playerStats);
+						playerStats = databaseHandler.getPlayerStatsFromDatabase(uuid.toString(), name);
+						statsMap.put(uuid, playerStats);
 					}
 
-					playerStats.setUsername(player.getName());
+					playerStats.setUsername(name);
 
 					playerStats.setLastLogin(new Date());
 
@@ -246,22 +223,25 @@ public class PlayerListener implements Listener {
 
             player.sendMessage(langHandler.getMessage(player, "game.placed", worldPlayersAlive.size() + 1));
 
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            if (plugin.isDatabaseEnabled()) {
 	            PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                if (playerStats != null) {
 
-	            playerStats.setDeaths(playerStats.getDeaths() + 1);
+                    playerStats.setDeaths(playerStats.getDeaths() + 1);
 
-	            EntityDamageEvent.DamageCause lastDamageCause = Objects.requireNonNull(player.getLastDamageCause()).getCause();
+                EntityDamageEvent lastDamage = player.getLastDamageCause();
+                EntityDamageEvent.DamageCause lastDamageCause = lastDamage == null ? null : lastDamage.getCause();
 
-	            if (player.getKiller() != null) {
-	                playerStats.setPlayerDeaths(playerStats.getPlayerDeaths() + 1);
-	            } else if (lastDamageCause == WORLD_BORDER) {
-	                playerStats.setBorderDeaths(playerStats.getBorderDeaths() + 1);
-	            } else {
-	                playerStats.setEnvironmentDeaths(playerStats.getEnvironmentDeaths() + 1);
-	            }
+                    if (player.getKiller() != null) {
+                        playerStats.setPlayerDeaths(playerStats.getPlayerDeaths() + 1);
+                    } else if (lastDamageCause == WORLD_BORDER) {
+                        playerStats.setBorderDeaths(playerStats.getBorderDeaths() + 1);
+                    } else {
+                        playerStats.setEnvironmentDeaths(playerStats.getEnvironmentDeaths() + 1);
+                    }
 
-	            playerStats.setDirty();
+                    playerStats.setDirty();
+                }
             }
 
         } else {
@@ -269,7 +249,7 @@ public class PlayerListener implements Listener {
             worldPlayersWaiting.remove(player);
         }
 
-        removeFromTeam(player);
+        ParticipationHandler.leave(player, world);
         removeBossBar(player);
 
         signHandler.setSignContent();
@@ -288,11 +268,13 @@ public class PlayerListener implements Listener {
 
         for (Player damager: playerDamagers.computeIfAbsent(player, k -> new HashSet<>())) {
             if (damager != killer) {
-                if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
-	                PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
-	                playerStats.setKillAssists(playerStats.getKillAssists() + 1);
+                if (plugin.isDatabaseEnabled()) {
+	                PlayerStatsHandler playerStats = statsMap.get(damager.getUniqueId());
+                    if (playerStats != null) {
+                        playerStats.setKillAssists(playerStats.getKillAssists() + 1);
 
-	                playerStats.setDirty();
+                        playerStats.setDirty();
+                    }
                 }
             }
         }
@@ -305,24 +287,26 @@ public class PlayerListener implements Listener {
                 String effectName = (String) effectMap.get("effect");
                 int duration = (int) effectMap.get("duration");
                 int level = (int) effectMap.get("level");
-                PotionEffectType effectType = PotionEffectType.getByName(effectName);
+                PotionEffectType effectType = PotionCompatibilityHandler.resolveEffectType(effectName);
                 if (effectType != null) {
                     killer.addPotionEffect(new PotionEffect(effectType, duration, level));
                 }
             }
 
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
-	            PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (plugin.isDatabaseEnabled()) {
+	            PlayerStatsHandler playerStats = statsMap.get(killer.getUniqueId());
+                if (playerStats != null) {
 
-	            playerStats.setKills(playerStats.getKills() + 1);
+                    playerStats.setKills(playerStats.getKills() + 1);
 
-	            playerStats.setDirty();
+                    playerStats.setDirty();
+                }
             }
         }
 
         Location location = player.getLocation();
-        world.spawnParticle(Particle.EXPLOSION_LARGE, player.getLocation(), 10);
-        world.spawnParticle(Particle.REDSTONE, location, 50, new Particle.DustOptions(Color.RED, 10f));
+        world.spawnParticle(Particle.EXPLOSION, player.getLocation(), 10);
+        world.spawnParticle(Particle.DUST, location, 50, new Particle.DustOptions(Color.RED, 10f));
         world.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 0.25f, 0.8f);
 
         if (gameStarted.getOrDefault(world.getName(), false)) {
@@ -416,7 +400,10 @@ public class PlayerListener implements Listener {
         if (!hgWorldNames.contains(event.getFrom().getName())) return;
         ParticipationHandler.leave(event.getPlayer(), event.getFrom());
         setSpawnHandler.removePlayerFromSpawnPoint(event.getPlayer(), event.getFrom());
-        setSpawnHandler.playersWaiting.getOrDefault(event.getFrom().getName(), new ArrayList<>()).remove(event.getPlayer());
+        setSpawnHandler.checkEnoughPlayers(event.getFrom());
+        new ScoreBoardHandler(plugin, langHandler).removeScoreboard(event.getPlayer());
+        removeBossBar(event.getPlayer(), event.getFrom());
+        signHandler.setSignContent();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -494,16 +481,18 @@ public class PlayerListener implements Listener {
         }
 
         if (damager instanceof Player && damaged instanceof LivingEntity) {
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            if (plugin.isDatabaseEnabled()) {
 	            PlayerStatsHandler playerStats = statsMap.get(damager.getUniqueId());
+                if (playerStats != null) {
 
-	            playerStats.setDamageDealt(playerStats.getDamageDealt() + event.getDamage());
+                    playerStats.setDamageDealt(playerStats.getDamageDealt() + event.getDamage());
 
-	            if (event.getCause() == PROJECTILE) {
-	                playerStats.setProjectileDamageDealt(playerStats.getProjectileDamageDealt() + event.getDamage());
-	            }
+                    if (event.getCause() == PROJECTILE) {
+                        playerStats.setProjectileDamageDealt(playerStats.getProjectileDamageDealt() + event.getDamage());
+                    }
 
-	            playerStats.setDirty();
+                    playerStats.setDirty();
+                }
             }
         }
 
@@ -511,27 +500,31 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        playerStats.setDamageTaken(playerStats.getDamageTaken() + event.getDamage());
+                playerStats.setDamageTaken(playerStats.getDamageTaken() + event.getDamage());
 
-	        if (event.getCause() == PROJECTILE) {
-	            playerStats.setProjectileDamageTaken(playerStats.getProjectileDamageTaken() + event.getDamage());
-	        }
+                if (event.getCause() == PROJECTILE) {
+                    playerStats.setProjectileDamageTaken(playerStats.getProjectileDamageTaken() + event.getDamage());
+                }
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
 
         ItemStack itemInMainHand = player.getInventory().getItemInMainHand();
         ItemStack itemInOffHand = player.getInventory().getItemInOffHand();
 
         if ((itemInMainHand.getType() == Material.SHIELD || itemInOffHand.getType() == Material.SHIELD) && player.isBlocking()) {
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            if (plugin.isDatabaseEnabled()) {
 	            PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
-	            playerStats.setAttacksBlocked(playerStats.getAttacksBlocked() + 1);
+                if (playerStats != null) {
+                    playerStats.setAttacksBlocked(playerStats.getAttacksBlocked() + 1);
 
-	            playerStats.setDirty();
+                    playerStats.setDirty();
+                }
             }
         }
 
@@ -560,20 +553,24 @@ public class PlayerListener implements Listener {
 
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             if (block != null && (block.getType() == Material.CHEST || block.getType() == Material.TRAPPED_CHEST || block.getType() == Material.BARREL)) {
-                if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+                if (plugin.isDatabaseEnabled()) {
 	                PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                    if (playerStats != null) {
 
-	                playerStats.setChestsOpened(playerStats.getChestsOpened() + 1);
+                        playerStats.setChestsOpened(playerStats.getChestsOpened() + 1);
 
-	                playerStats.setDirty();
+                        playerStats.setDirty();
+                    }
                 }
             } else if (block != null && (block.getType() == Material.RED_SHULKER_BOX)) {
-                if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+                if (plugin.isDatabaseEnabled()) {
 	                PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                    if (playerStats != null) {
 
-	                playerStats.setSupplyDropsOpened(playerStats.getSupplyDropsOpened() + 1);
+                        playerStats.setSupplyDropsOpened(playerStats.getSupplyDropsOpened() + 1);
 
-	                playerStats.setDirty();
+                        playerStats.setDirty();
+                    }
                 }
             }
         }
@@ -594,16 +591,18 @@ public class PlayerListener implements Listener {
         }
 
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        if (projectile instanceof Arrow) {
-	            playerStats.setArrowsShot(playerStats.getArrowsShot() + 1);
-	        } else {
-	            playerStats.setFireworksShot(playerStats.getFireworksShot() + 1);
-	        }
+                if (projectile instanceof Arrow) {
+                    playerStats.setArrowsShot(playerStats.getArrowsShot() + 1);
+                } else {
+                    playerStats.setFireworksShot(playerStats.getFireworksShot() + 1);
+                }
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 
@@ -626,16 +625,18 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        if (projectile instanceof Arrow || projectile instanceof SpectralArrow) {
-	            playerStats.setArrowsLanded(playerStats.getArrowsLanded() + 1);
-	        } else {
-	            playerStats.setFireworksLanded(playerStats.getFireworksLanded() + 1);
-	        }
+                if (projectile instanceof Arrow || projectile instanceof SpectralArrow) {
+                    playerStats.setArrowsLanded(playerStats.getArrowsLanded() + 1);
+                } else {
+                    playerStats.setFireworksLanded(playerStats.getFireworksLanded() + 1);
+                }
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 
@@ -649,12 +650,14 @@ public class PlayerListener implements Listener {
 
 	    double healthRegenerated = event.getAmount();
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        playerStats.setHealthRegenerated(playerStats.getHealthRegenerated() + healthRegenerated);
+                playerStats.setHealthRegenerated(playerStats.getHealthRegenerated() + healthRegenerated);
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 
@@ -665,16 +668,18 @@ public class PlayerListener implements Listener {
 
 	    if (isInIgnoredWorld(player.getWorld().getName())) return;
 
-	    if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+	    if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        if (consumedItem.getType() == Material.POTION) {
-	            playerStats.setPotionsUsed(playerStats.getPotionsUsed() + 1);
-	        } else {
-	            playerStats.setFoodConsumed(playerStats.getFoodConsumed() + 1);
-	        }
+                if (consumedItem.getType() == Material.POTION) {
+                    playerStats.setPotionsUsed(playerStats.getPotionsUsed() + 1);
+                } else {
+                    playerStats.setFoodConsumed(playerStats.getFoodConsumed() + 1);
+                }
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 
@@ -686,12 +691,14 @@ public class PlayerListener implements Listener {
 
 	    if (isInIgnoredWorld(player.getWorld().getName())) return;
 
-	    if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+	    if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        playerStats.setPotionsUsed(playerStats.getPotionsUsed() + 1);
+                playerStats.setPotionsUsed(playerStats.getPotionsUsed() + 1);
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 
@@ -703,12 +710,14 @@ public class PlayerListener implements Listener {
 
 	    if (isInIgnoredWorld(player.getWorld().getName())) return;
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        playerStats.setPotionsUsed(playerStats.getPotionsUsed() + 1);
+                playerStats.setPotionsUsed(playerStats.getPotionsUsed() + 1);
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 
@@ -724,12 +733,14 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        playerStats.setTotemsPopped(playerStats.getTotemsPopped() + 1);
+                playerStats.setTotemsPopped(playerStats.getTotemsPopped() + 1);
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
     }
 

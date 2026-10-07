@@ -8,7 +8,6 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
@@ -27,6 +26,7 @@ public class ArenaHandler {
     }
 
     public void createArenaConfig(World world) {
+        arenaConfig = null;
         String worldName = world.getName();
         arenaFile = new File(plugin.getDataFolder() + File.separator + worldName, "arena.yml");
 
@@ -40,8 +40,7 @@ public class ArenaHandler {
 
         if (!arenaFile.exists()) {
             try {
-                plugin.saveResource("arena.yml", true);
-                Files.copy(new File(plugin.getDataFolder(), "arena.yml").toPath(), arenaFile.toPath());
+                configHandler.copyDefaultResource("arena.yml", arenaFile);
             } catch (IOException e) {
                 plugin.getLogger().log(Level.SEVERE, "Could not create arena.yml from", e);
             }

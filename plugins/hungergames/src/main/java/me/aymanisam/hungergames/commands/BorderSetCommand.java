@@ -50,7 +50,7 @@ public class BorderSetCommand implements CommandExecutor {
         World world;
 
         if (player == null) {
-            if (args.length != 1) {
+            if (args.length != 4) {
                 sender.sendMessage(langHandler.getMessage(null, "no-world"));
                 return true;
             }
@@ -65,7 +65,12 @@ public class BorderSetCommand implements CommandExecutor {
             world = player.getWorld();
         }
 
-        if (arenaHandler.getArenaConfig(world).get("region") == null) {
+        if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
+        var arena = arenaHandler.getArenaConfig(world);
+        if (arena == null || arena.get("region") == null) {
             sender.sendMessage(langHandler.getMessage(player, "supplydrop.no-arena"));
             return true;
         }
@@ -73,9 +78,11 @@ public class BorderSetCommand implements CommandExecutor {
         int newSize, centerX, centerZ;
 
         try {
-            newSize = Integer.parseInt(args[0]);
-            centerX = Integer.parseInt(args[1]);
-            centerZ = Integer.parseInt(args[2]);
+            int offset = player == null ? 1 : 0;
+            newSize = Integer.parseInt(args[offset]);
+            centerX = Integer.parseInt(args[offset + 1]);
+            centerZ = Integer.parseInt(args[offset + 2]);
+            if (newSize < 1 || newSize > 59999968) throw new NumberFormatException("Invalid border size");
         } catch (NumberFormatException e) {
             sender.sendMessage(langHandler.getMessage(player, "border.invalid-args"));
             return true;

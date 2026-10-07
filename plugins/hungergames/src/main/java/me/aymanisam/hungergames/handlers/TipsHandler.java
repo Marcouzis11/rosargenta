@@ -23,12 +23,11 @@ public class TipsHandler {
     }
 
     public void sendTips() {
-        List<String> tips = new ArrayList<>();
-        Set<String> keys = Objects.requireNonNull(langHandler.getLangConfig().getConfigurationSection("tips")).getKeys(false);
-        for (String key : keys) {
-            String tip = langHandler.getLangConfig().getString("tips." + key);
-            tips.add(tip);
-        }
+        var section = langHandler.getLangConfig().getConfigurationSection("tips");
+        if (section == null) return;
+        List<String> tips = new ArrayList<>(section.getKeys(false));
+        if (tips.isEmpty()) return;
+        String tipKey = "tips." + tips.get(Math.floorMod(tipIndex, tips.size()));
 
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             ItemStack itemInHand = player.getInventory().getItemInMainHand();
@@ -43,7 +42,7 @@ public class TipsHandler {
                         return;
                     }
                     if (itemInHand.getItemMeta() == null || !(itemInHand.getItemMeta().getDisplayName().equals(langHandler.getMessage(player, "team.compass-teammate")))) {
-                        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(langHandler.getMessage(player, "tips." + tipIndex)));
+                        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(langHandler.getMessage(player, tipKey)));
                     }
 
                     counter++;
@@ -52,7 +51,7 @@ public class TipsHandler {
 
         }
 
-        tipIndex = (tipIndex) % tips.size();
+        tipIndex = (tipIndex + 1) % tips.size();
     }
 
     public void startSendingTips(long interval) {

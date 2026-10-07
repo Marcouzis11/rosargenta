@@ -17,12 +17,12 @@ import static me.aymanisam.hungergames.HungerGames.statsMap;
 
 public class DisplayStatsCommand implements CommandExecutor {
 	private final LangHandler langHandler;
-	private final ConfigHandler configHandler;
+	private final HungerGames plugin;
 	private final DisplayStatsHandler displayStatsHandler;
 
 	public DisplayStatsCommand(HungerGames plugin, LangHandler langHandler) {
 		this.langHandler = langHandler;
-		this.configHandler = plugin.getConfigHandler();
+		this.plugin = plugin;
 		this.displayStatsHandler = new DisplayStatsHandler(plugin, langHandler);
 	}
 
@@ -38,7 +38,7 @@ public class DisplayStatsCommand implements CommandExecutor {
 			return true;
 		}
 
-		if (!configHandler.getPluginSettings().getBoolean("database.enabled")) {
+		if (!plugin.isDatabaseEnabled() || !statsMap.containsKey(player.getUniqueId())) {
 			player.sendMessage(langHandler.getMessage(player, "no-database"));
 			return true;
 		}

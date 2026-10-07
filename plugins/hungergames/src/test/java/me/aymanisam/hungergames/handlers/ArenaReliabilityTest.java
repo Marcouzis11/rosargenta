@@ -26,7 +26,7 @@ class ArenaReliabilityTest {
         assertEquals("original blocks and entities", Files.readString(world.resolve("region.mca")));
         assertEquals("stable uuid", Files.readString(world.resolve("uid.dat")));
         assertFalse(Files.exists(world.resolve("extra.mca")));
-        assertEquals("played", Files.readString(templates.resolve("arena-hg-previous/level.dat")));
+        assertEquals("played", Files.readString(temp.resolve(".arena-hg-previous/level.dat")));
     }
     @Test void incompleteOrNestedTemplateDoesNotTouchExistingWorld() throws Exception {
         Path world = Files.createDirectory(temp.resolve("arena"));
@@ -35,6 +35,32 @@ class ArenaReliabilityTest {
         assertThrows(java.io.IOException.class, () -> WorldResetHandler.restoreFiles(world.toFile(), template.toFile()));
         assertThrows(java.io.IOException.class, () -> WorldResetHandler.requireSafePaths(world.toFile(), world.resolve("nested").toFile()));
         assertEquals("keep me", Files.readString(world.resolve("level.dat")));
+    }
+    @Test void restoreKeepsWorldSymlinkAndUpdatesItsTarget() throws Exception {
+        Path world = Files.createDirectory(temp.resolve("real-world"));
+        Path template = Files.createDirectory(temp.resolve("template"));
+        Files.writeString(world.resolve("level.dat"), "played");
+        Files.writeString(template.resolve("level.dat"), "baseline");
+        Path link = temp.resolve("arena-link");
+        Files.createSymbolicLink(link, world);
+        WorldResetHandler.restoreFiles(link.toFile(), template.toFile());
+        assertTrue(Files.isSymbolicLink(link));
+        assertEquals("baseline", Files.readString(world.resolve("level.dat")));
+        assertEquals("played", Files.readString(temp.resolve(".real-world-hg-previous/level.dat")));
+    }
+    @Test void restoreSupportsTemplateOnAnotherLinuxFilesystem() throws Exception {
+        Path sharedMemory = Path.of("/dev/shm");
+        org.junit.jupiter.api.Assumptions.assumeTrue(Files.isDirectory(sharedMemory) && Files.isWritable(sharedMemory));
+        org.junit.jupiter.api.Assumptions.assumeFalse(Files.getFileStore(temp).equals(Files.getFileStore(sharedMemory)));
+        Path template = Files.createTempDirectory(sharedMemory, "hg-restore-test-");
+        try {
+            Path world = Files.createDirectory(temp.resolve("mounted-arena"));
+            Files.writeString(world.resolve("level.dat"), "played");
+            Files.writeString(template.resolve("level.dat"), "baseline");
+            WorldResetHandler.restoreFiles(world.toFile(), template.toFile());
+            assertEquals("baseline", Files.readString(world.resolve("level.dat")));
+            assertEquals("played", Files.readString(temp.resolve(".mounted-arena-hg-previous/level.dat")));
+        } finally { org.apache.commons.io.FileUtils.deleteDirectory(template.toFile()); }
     }
     @Test void leavingLastTeamMemberEliminatesTeamOnlyOnce() {
         me.aymanisam.hungergames.HungerGames.gameStarted.put("arena", true);

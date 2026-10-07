@@ -53,7 +53,7 @@ public class SignSetCommand implements CommandExecutor {
 
 	    List<String> validActions = List.of("create", "remove", "assign", "list");
 
-	    if (!validActions.contains(action.toLowerCase())) {
+	    if (!validActions.contains(action.toLowerCase(java.util.Locale.ROOT))) {
 		    sender.sendMessage(langHandler.getMessage(player, "game.no-args"));
 		    return true;
 	    }

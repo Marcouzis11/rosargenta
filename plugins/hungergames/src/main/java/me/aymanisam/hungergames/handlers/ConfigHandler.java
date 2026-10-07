@@ -10,6 +10,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.logging.Level;
@@ -43,8 +45,7 @@ public class ConfigHandler {
 
         if (!worldFile.exists()) {
             try {
-                plugin.saveResource("config.yml", true);
-                Files.copy(new File(plugin.getDataFolder(), "config.yml").toPath(), worldFile.toPath());
+                copyDefaultResource("config.yml", worldFile);
             } catch (IOException e) {
                 plugin.getLogger().log(Level.SEVERE, "Could not create config file for world " + worldName, e);
             }
@@ -103,8 +104,7 @@ public class ConfigHandler {
 
         if (!itemsFile.exists()) {
             try {
-                plugin.saveResource("items.yml", true);
-                Files.copy(new File(plugin.getDataFolder(), "items.yml").toPath(), itemsFile.toPath());
+                copyDefaultResource("items.yml", itemsFile);
             } catch (IOException e) {
                 plugin.getLogger().log(Level.SEVERE, "Could not create items file for world " + worldName, e);
             }
@@ -116,12 +116,7 @@ public class ConfigHandler {
     public FileConfiguration loadSignFile() {
         signFile = new File(plugin.getDataFolder(), "signs.yml");
         if (!signFile.exists()) {
-            plugin.saveResource("signs.yml", true);
-            try {
-                Files.copy(new File(plugin.getDataFolder(), "signs.yml").toPath(), signFile.toPath());
-            } catch (IOException e) {
-                plugin.getLogger().log(Level.SEVERE, "Could not create sign file for world " + e);
-            }
+            plugin.saveResource("signs.yml", false);
         }
         return YamlConfiguration.loadConfiguration(signFile);
     }
@@ -143,28 +138,32 @@ public class ConfigHandler {
 	}
 
 	public void loadSignLocations() {
+		signLocations.clear();
 		List<String> locations = loadSignFile().getStringList("signs");
 		for (String locString : locations) {
-			String[] parts = locString.split(",");
-			World world = Bukkit.getWorld(parts[0]);
-			double x = Double.parseDouble(parts[1]);
-			double y = Double.parseDouble(parts[2]);
-			double z = Double.parseDouble(parts[3]);
-			String slot = "";
 			try {
-				 slot = parts[4];
-			} catch (IndexOutOfBoundsException e) {
-				plugin.getLogger().log(Level.SEVERE, "Your signs.yml file is using the old signs system. To migrate to the new system, delete the file, restart the server and follow the instructions here https://hungergames.aymanisam.me/docs/setup/signs.");
-				plugin.getPluginLoader().disablePlugin(plugin);
+                String[] parts = locString.split(",", -1);
+                if (parts.length != 5 || parts[4].isBlank()) throw new IllegalArgumentException("Expected world,x,y,z,slot");
+                World world = Bukkit.getWorld(parts[0]);
+                if (world == null) {
+                    plugin.getLogger().warning("Sign world is not loaded: " + parts[0] + "; check its name and capitalization in signs.yml.");
+                    continue;
+                }
+                double x = Double.parseDouble(parts[1]), y = Double.parseDouble(parts[2]), z = Double.parseDouble(parts[3]);
+                if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IllegalArgumentException("Invalid coordinates");
+                signLocations.put(parts[4], new Location(world, x, y, z));
+			} catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Skipping invalid signs.yml entry: " + locString + " (" + e.getMessage() + ")");
 			}
-			signLocations.put(slot, new Location(world, x, y, z));
 		}
 	}
 
 	public void loadSlots() {
+		slots.clear();
 		for (String slot : loadSignFile().getStringList("slots")) {
-			String[] parts = slot.split(",");
-			slots.put(parts[0], parts[1]);
+            String[] parts = slot.split(",", -1);
+            if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) slots.put(parts[0], parts[1]);
+            else plugin.getLogger().warning("Skipping invalid signs.yml slot: " + slot);
 		}
 	}
 
@@ -186,44 +185,37 @@ public class ConfigHandler {
 	}
 
     public void validateConfigKeys(World world) {
-        YamlConfiguration pluginConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(Objects.requireNonNull(plugin.getResource("config.yml"))));
-
         File serverConfigFile = new File(plugin.getDataFolder() + File.separator + world.getName(), "config.yml");
-
-        YamlConfiguration serverConfig = YamlConfiguration.loadConfiguration(serverConfigFile);
-        Set<String> keys = pluginConfig.getKeys(true);
-
-        for (String key : keys) {
-            if (!serverConfig.isSet(key)) {
-                serverConfig.set(key, pluginConfig.get(key));
-            }
-        }
-
-        try {
-            serverConfig.save(serverConfigFile);
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not validate config.yml keys" + e);
-        }
+        worldConfigs.put(world.getName(), validateKeys("config.yml", serverConfigFile));
     }
 
     public void validateSettingsKeys() {
-        YamlConfiguration pluginSettings = YamlConfiguration.loadConfiguration(new InputStreamReader(Objects.requireNonNull(plugin.getResource("settings.yml"))));
-
         File serverSettingsFile = new File(plugin.getDataFolder(), "settings.yml");
+        pluginSettings = validateKeys("settings.yml", serverSettingsFile);
+    }
 
-        YamlConfiguration serverSettings = YamlConfiguration.loadConfiguration(serverSettingsFile);
-        Set<String> keys = pluginSettings.getKeys(true);
-
-        for (String key : keys) {
-            if (!serverSettings.isSet(key)) {
-                serverSettings.set(key, pluginSettings.get(key));
+    private YamlConfiguration validateKeys(String resourceName, File file) {
+        try (InputStreamReader reader = new InputStreamReader(
+                Objects.requireNonNull(plugin.getResource(resourceName)), StandardCharsets.UTF_8)) {
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(reader);
+            YamlConfiguration config = new YamlConfiguration();
+            // Loading strictly prevents replacing a malformed migrated file with defaults.
+            if (file.exists()) config.load(file);
+            for (String key : defaults.getKeys(true)) {
+                if (!defaults.isConfigurationSection(key) && !config.isSet(key)) config.set(key, defaults.get(key));
             }
+            config.save(file);
+            return config;
+        } catch (IOException | org.bukkit.configuration.InvalidConfigurationException e) {
+            throw new IllegalStateException("Could not validate " + file + "; check YAML syntax and file permissions", e);
         }
+    }
 
-        try {
-            serverSettings.save(serverSettingsFile);
-        } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not validate settings.yml keys" + e);
+    public void copyDefaultResource(String resourceName, File target) throws IOException {
+        Files.createDirectories(target.toPath().getParent());
+        try (InputStream resource = plugin.getResource(resourceName)) {
+            if (resource == null) throw new IOException("Missing bundled resource: " + resourceName);
+            Files.copy(resource, target.toPath());
         }
     }
 }

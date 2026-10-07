@@ -26,6 +26,7 @@ public class BlockBreakListener implements Listener {
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
+        if (!HungerGames.hgWorldNames.contains(player.getWorld().getName())) return;
         if (player.getGameMode() != GameMode.SURVIVAL) {
             return;
         }

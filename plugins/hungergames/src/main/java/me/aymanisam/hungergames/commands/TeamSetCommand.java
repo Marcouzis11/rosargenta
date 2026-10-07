@@ -45,7 +45,7 @@ public class TeamSetCommand implements CommandExecutor {
 
 		List<String> validActions = List.of("add", "remove", "list", "finalize", "reset");
 
-		if (!validActions.contains(action.toLowerCase())) {
+		if (!validActions.contains(action.toLowerCase(java.util.Locale.ROOT))) {
 			sender.sendMessage(langHandler.getMessage(player, "team.no-action"));
 			return true;
         }

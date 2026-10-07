@@ -138,7 +138,7 @@ public class HungerGamesExpansion extends PlaceholderExpansion {
 
 		if (playerStats == null) return "";
 
-		return switch (params.toLowerCase()) {
+		return switch (params.toLowerCase(java.util.Locale.ROOT)) {
 			case "uuid" -> String.valueOf(playerStats.getUuid());
 			case "username" -> String.valueOf(playerStats.getUsername());
 			case "deaths" -> String.valueOf(playerStats.getDeaths());

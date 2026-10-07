@@ -14,8 +14,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.sql.SQLException;
-import java.time.LocalDate;
-import java.time.format.TextStyle;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -38,9 +36,14 @@ public final class HungerGames extends JavaPlugin {
     private ArenaMobListener arenaMobListener;
     private SupplyDropTracker supplyDropTracker;
     private DatabaseHandler database;
+    private boolean databaseReady;
 
     public DatabaseHandler getDatabase() {
         return database;
+    }
+
+    public boolean isDatabaseEnabled() {
+        return databaseReady && configHandler.getPluginSettings().getBoolean("database.enabled");
     }
 
     @Override
@@ -83,39 +86,35 @@ public final class HungerGames extends JavaPlugin {
         CountDownHandler countDownHandler = new CountDownHandler(this, langHandler, gameSequenceHandler, teamVotingListener);
         setSpawnHandler.setCountDownHandler(countDownHandler);
         WorldBorderHandler worldBorderHandler = new WorldBorderHandler(this, langHandler);
-	    DatabaseHandler databaseHandler = new DatabaseHandler(this);
-
+	    langHandler.normalizeFileNames();
 	    langHandler.saveLanguageFiles();
 	    langHandler.validateLanguageKeys();
 	    langHandler.loadLanguageConfigs();
-	    langHandler.normalizeFileNames();
 
         if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
             // Database
             try {
                 this.database = new DatabaseHandler(this);
                 database.initializeDatabase();
-	            databaseHandler.changeSecondsPlayedType();
+                database.changeSecondsPlayedType();
+                databaseReady = true;
             } catch (SQLException e) {
-                this.getLogger().log(Level.SEVERE ,"Unable to connect to database and create tables.");
-                this.getLogger().log(Level.SEVERE, e.toString());
+                this.getLogger().log(Level.SEVERE, "Statistics unavailable: could not initialize MySQL. HungerGames will continue without statistics.", e);
+                if (database != null) database.closeConnection();
             }
 
-	        int interval = configHandler.getPluginSettings().getInt("database.interval");
-	        getServer().getScheduler().runTaskTimerAsynchronously(this, () -> saveToDatabase(false), 20L * interval, 20L * interval);
+            if (isDatabaseEnabled()) {
+                int interval = Math.max(1, configHandler.getPluginSettings().getInt("database.interval", 60));
+                getServer().getScheduler().runTaskTimer(this, () -> saveToDatabase(false), 20L * interval, 20L * interval);
+            }
         }
 
-		if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null && configHandler.getPluginSettings().getBoolean("database.enabled")) {
+		if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null && isDatabaseEnabled()) {
 			new HungerGamesExpansion(this, setSpawnHandler).register();
 			try {
-				databaseHandler.getPlayerLeaderboards();
+				database.getPlayerLeaderboards();
 			} catch (SQLException e) {
-				String monthYear = LocalDate.now().getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toLowerCase() + "_" + LocalDate.now().getYear();
-				try {
-					databaseHandler.addMonthColumn(monthYear);
-				} catch (SQLException ex) {
-					this.getLogger().log(Level.SEVERE, ex.toString());
-				}
+                getLogger().log(Level.WARNING, "Could not load statistics leaderboards", e);
 			}
 		}
 
@@ -148,8 +147,6 @@ public final class HungerGames extends JavaPlugin {
 
 	    loadWorldFiles();
 
-	    hgWorldNames.remove(configHandler.getPluginSettings().getString("lobby-world"));
-
         arenaMobListener = new ArenaMobListener(this);
         getServer().getPluginManager().registerEvents(arenaMobListener, this);
         getServer().getWorlds().forEach(arenaMobListener::protectConfiguredWorld);
@@ -157,21 +154,25 @@ public final class HungerGames extends JavaPlugin {
         // Checks if the current version is the latest version
         int spigotPluginId = 111936;
 
-        String latestVersionString = getLatestPluginVersion(spigotPluginId);
-        int latestHyphenIndex = latestVersionString.indexOf('-');
-        String latestVersion = (latestHyphenIndex != -1) ? latestVersionString.substring(0, latestHyphenIndex) : latestVersionString;
+        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+            String latestVersionString = getLatestPluginVersion(spigotPluginId);
+            if (latestVersionString == null) {
+                getLogger().warning("Failed to check for updates");
+                return;
+            }
+            int latestHyphenIndex = latestVersionString.indexOf('-');
+            String latestVersion = (latestHyphenIndex != -1) ? latestVersionString.substring(0, latestHyphenIndex) : latestVersionString;
 
-        String currentVersionString = this.getDescription().getVersion();
-        int currentHyphenIndex = currentVersionString.indexOf('-');
-        String currentVersion = (currentHyphenIndex != -1) ? currentVersionString.substring(0, currentHyphenIndex) : currentVersionString;
+            String currentVersionString = this.getDescription().getVersion();
+            int currentHyphenIndex = currentVersionString.indexOf('-');
+            String currentVersion = (currentHyphenIndex != -1) ? currentVersionString.substring(0, currentHyphenIndex) : currentVersionString;
 
-        if (latestVersion.equals("Error: null")) {
-            this.getLogger().log(Level.WARNING, "Failed to check for updates");
-        } else if (!Objects.equals(latestVersion, currentVersion)) {
-            this.getLogger().log(Level.WARNING, "You are not running the latest version of HungerGames! ");
-            this.getLogger().log(Level.WARNING, "Please update your plugin to the latest version " + "\u001B[36m" + latestVersion + "\u001B[33m" + " for the best experience and bug fixes.");
-            this.getLogger().log(Level.WARNING, "https://modrinth.com/plugin/hungergames/versions#all-versions");
-        }
+            if (!Objects.equals(latestVersion, currentVersion)) {
+                this.getLogger().log(Level.WARNING, "You are not running the latest version of HungerGames! ");
+                this.getLogger().log(Level.WARNING, "Please update your plugin to the latest version " + "\u001B[36m" + latestVersion + "\u001B[33m" + " for the best experience and bug fixes.");
+                this.getLogger().log(Level.WARNING, "https://modrinth.com/plugin/hungergames/versions#all-versions");
+            }
+        });
 
         TipsHandler tipsHandler = new TipsHandler(this, langHandler);
         if (configHandler.getPluginSettings().getBoolean("tips")) {
@@ -183,30 +184,33 @@ public final class HungerGames extends JavaPlugin {
     }
 
 	public void loadWorldFiles() {
-		File serverDirectory = new File(".");
+		File serverDirectory = getServer().getWorldContainer();
 		File[] files = serverDirectory.listFiles();
+        Set<String> discovered = new TreeSet<>();
+        getServer().getWorlds().forEach(world -> discovered.add(world.getName()));
 
 		if (files != null) {
 		    for (File file : files) {
-		        if (file.isDirectory()) {
+		        if (file.isDirectory() && !file.isHidden()) {
 		            File levelDat = new File(file, "level.dat");
 		            if (levelDat.exists()) {
 		                String worldName = file.getName();
-		                worldNames.add(worldName);
-		                FileConfiguration settings = configHandler.getPluginSettings();
-		                if (!settings.getBoolean("whitelist-worlds")) {
-		                    if (!settings.getStringList("ignored-worlds").contains(worldName)) {
-		                        hgWorldNames.add(worldName);
-		                    }
-		                } else {
-		                    if (settings.getStringList("ignored-worlds").contains(worldName)) {
-		                        hgWorldNames.add(worldName);
-		                    }
-		                }
+                        discovered.add(worldName);
 		            }
 		        }
 		    }
 		}
+        worldNames.clear();
+        worldNames.addAll(discovered);
+        hgWorldNames.clear();
+        FileConfiguration settings = getConfigHandler().getPluginSettings();
+        String lobby = settings.getString("lobby-world", "world");
+        List<String> configured = settings.getStringList("ignored-worlds");
+        for (String name : discovered) {
+            if (!name.equals(lobby) && configured.contains(name) == settings.getBoolean("whitelist-worlds")) {
+                hgWorldNames.add(name);
+            }
+        }
 	}
 
 	public ConfigHandler getConfigHandler() {
@@ -223,17 +227,24 @@ public final class HungerGames extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        for (World world: Bukkit.getWorlds()) {
-            gameSequenceHandler.endGame(true, world);
+        if (gameSequenceHandler != null) {
+            for (World world: Bukkit.getWorlds()) {
+                try {
+                    gameSequenceHandler.endGame(true, world);
+                } catch (RuntimeException e) {
+                    getLogger().log(Level.SEVERE, "Could not finish arena during shutdown: " + world.getName(), e);
+                }
+            }
         }
 
-	    if (this.getConfigHandler().getPluginSettings().getBoolean("database.enabled")) {
+	    if (isDatabaseEnabled()) {
 		    saveToDatabase(true);
 	    }
 
         if (this.database != null) {
             this.database.closeConnection();
         }
+        databaseReady = false;
     }
 
     public File getPluginFile() {
@@ -246,6 +257,7 @@ public final class HungerGames extends JavaPlugin {
     }
 
 	private void saveToDatabase(Boolean stopping) {
+        if (!isDatabaseEnabled()) return;
 		Runnable saveTask = () -> {
 			try {
 				for (PlayerStatsHandler playerStats : statsMap.values()) {

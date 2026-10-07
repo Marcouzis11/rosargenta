@@ -59,15 +59,22 @@ public class ReloadConfigCommand implements CommandExecutor {
             world = player.getWorld();
         }
 
-	    assert world != null;
+        if (world == null) {
+            sender.sendMessage(langHandler.getMessage(player, "teleport.invalid-world", args[0]));
+            return true;
+        }
 	    configHandler.validateConfigKeys(world);
         configHandler.loadItemsConfig(world);
         configHandler.loadSignFile();
         configHandler.createWorldConfig(world);
         configHandler.createPluginSettings();
         configHandler.validateSettingsKeys();
+        langHandler.normalizeFileNames();
         langHandler.saveLanguageFiles();
         langHandler.validateLanguageKeys();
+        langHandler.loadLanguageConfigs();
+        configHandler.loadSignLocations();
+        configHandler.loadSlots();
         arenaHandler.getArenaConfig(world);
 		plugin.loadWorldFiles();
 

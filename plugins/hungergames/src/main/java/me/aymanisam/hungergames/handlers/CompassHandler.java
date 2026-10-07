@@ -40,12 +40,13 @@ public class CompassHandler {
             return null;
         }
 
-        Integer index = worldTeammateIndexMap.getOrDefault(player, 0);
+        int index = Math.floorMod(worldTeammateIndexMap.getOrDefault(player, 0), playerTeam.size());
 
         int loopCount = 0;
         Player teammate = playerTeam.get(index);
 
-        while (teammate != null && (!teammate.isOnline() || (teammate.getGameMode() != GameMode.ADVENTURE && teammate.getGameMode() != GameMode.SURVIVAL) || teammate.isDead())) {
+        while (teammate != null && (!teammate.isOnline() || !world.equals(teammate.getWorld())
+                || (teammate.getGameMode() != GameMode.ADVENTURE && teammate.getGameMode() != GameMode.SURVIVAL) || teammate.isDead())) {
             // Putting teammates into worldTeammateIndexMap
             index = (index + 1) % playerTeam.size();
             if (loopCount++ >= playerTeam.size()) {
@@ -90,9 +91,9 @@ public class CompassHandler {
         }
 
         for (Player targetPlayer : player.getWorld().getPlayers()) {
-            if (targetPlayer != player && (targetPlayer.getGameMode() == GameMode.ADVENTURE || targetPlayer.getGameMode() == GameMode.SURVIVAL) && targetPlayer.isOnline() && !(playerTeam == null || playerTeam.contains(targetPlayer))) {
-                double distance = player.getLocation().distance(targetPlayer.getLocation());
+            if (targetPlayer != player && (targetPlayer.getGameMode() == GameMode.ADVENTURE || targetPlayer.getGameMode() == GameMode.SURVIVAL) && targetPlayer.isOnline() && (playerTeam == null || !playerTeam.contains(targetPlayer))) {
                 if (player.getWorld() != targetPlayer.getWorld()) continue;
+                double distance = player.getLocation().distance(targetPlayer.getLocation());
 
                 if (distance < closestDistance) {
                     closestDistance = distance;

@@ -68,7 +68,10 @@ public class StartGameCommand implements CommandExecutor {
             world = player.getWorld();
         }
 
-        assert world != null;
+        if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
 
         if (gameStarted.getOrDefault(world.getName(), false)) {
             sender.sendMessage(langHandler.getMessage(player, "startgame.started"));
@@ -107,16 +110,18 @@ public class StartGameCommand implements CommandExecutor {
 
         countDownHandler.startCountDown(world);
 
-        if (player != null && configHandler.getPluginSettings().getBoolean("database.enabled")) {
+        if (player != null && plugin.isDatabaseEnabled()) {
 	        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+            if (playerStats != null) {
 
-	        if (playersPerTeam != 1) {
-	            playerStats.setTeamGamesStarted(playerStats.getTeamGamesStarted() + 1);
-	        } else {
-	            playerStats.setSoloGamesStarted(playerStats.getSoloGamesStarted() + 1);
-	        }
+                if (playersPerTeam != 1) {
+                    playerStats.setTeamGamesStarted(playerStats.getTeamGamesStarted() + 1);
+                } else {
+                    playerStats.setSoloGamesStarted(playerStats.getSoloGamesStarted() + 1);
+                }
 
-	        playerStats.setDirty();
+                playerStats.setDirty();
+            }
         }
 
         return true;

@@ -77,6 +77,18 @@ public class GameSequenceHandler {
     }
 
     public void startGame(World world) {
+        try {
+            startGameInternal(world);
+        } catch (RuntimeException | LinkageError ex) {
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Cannot start arena " + world.getName(), ex);
+            gameStarting.put(world.getName(), false);
+            gameStarted.put(world.getName(), false);
+            for (Player player : world.getPlayers()) player.sendMessage("§cNo se pudo iniciar la partida. Revisá la consola del servidor.");
+            endGame(true, world);
+        }
+    }
+
+    private void startGameInternal(World world) {
         ParticipationHandler.removeSpectators(world);
         List<String> errors = new ArenaValidationHandler(plugin).validate(world,
                 setSpawnHandler.spawnPoints.getOrDefault(world.getName(), List.of()),
@@ -145,16 +157,18 @@ public class GameSequenceHandler {
                 player.setGameMode(GameMode.SURVIVAL);
             }
 
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            if (plugin.isDatabaseEnabled()) {
 	            PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                if (playerStats != null) {
 
-	            if (playersPerTeam != 1) {
-	                playerStats.setTeamGamesPlayed(playerStats.getTeamGamesPlayed() + 1);
-	            } else {
-	                playerStats.setSoloGamesPlayed(playerStats.getSoloGamesPlayed() + 1);
-	            }
+                    if (playersPerTeam != 1) {
+                        playerStats.setTeamGamesPlayed(playerStats.getTeamGamesPlayed() + 1);
+                    } else {
+                        playerStats.setSoloGamesPlayed(playerStats.getSoloGamesPlayed() + 1);
+                    }
 
-	            playerStats.setDirty();
+                    playerStats.setDirty();
+                }
             }
 
             Long timeSpent = totalTimeSpent.getOrDefault(player, 0L);
@@ -172,7 +186,7 @@ public class GameSequenceHandler {
             if (configHandler.getWorldConfig(world).getBoolean("bedrock-buff.enabled") && player.getName().startsWith(".")) {
                 List<String> effectNames = configHandler.getWorldConfig(world).getStringList("bedrock-buff.effects");
                 for (String effectName : effectNames) {
-                    PotionEffectType effectType = PotionEffectType.getByName(effectName);
+                    PotionEffectType effectType = PotionCompatibilityHandler.resolveEffectType(effectName);
                     if (effectType != null) {
                         player.addPotionEffect(new PotionEffect(effectType, 200000, 1, true, false));
                     }
@@ -189,7 +203,8 @@ public class GameSequenceHandler {
         int chestRefillInterval = configHandler.getWorldConfig(world).getInt("chestrefill.interval") * 20;
         ChestRefillHandler chestRefillHandler = new ChestRefillHandler(plugin, langHandler);
 
-        BukkitTask worldChestRefillTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> chestRefillHandler.refillChests(world), 0, chestRefillInterval);
+        chestRefillHandler.refillChests(world);
+        BukkitTask worldChestRefillTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> chestRefillHandler.refillChests(world), chestRefillInterval, chestRefillInterval);
         chestRefillTask.put(world.getName(), worldChestRefillTask);
 
         mainGame(world);
@@ -219,7 +234,8 @@ public class GameSequenceHandler {
             timeLeft.put(world.getName(), currentTimeLeft);
 
             for (Player player: world.getPlayers()) {
-                scoreBoardHandler.updateBoard(boards.get(player.getUniqueId()), world);
+                if (!boards.containsKey(player.getUniqueId())) scoreBoardHandler.createBoard(player);
+                else scoreBoardHandler.updateBoard(boards.get(player.getUniqueId()), world);
             }
 
             if (configHandler.getWorldConfig(world).getInt("players-per-team", 1) != 1) {
@@ -306,12 +322,14 @@ public class GameSequenceHandler {
         if (winner != null) {
             worldPlayerPlacements.add(winner);
 
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            if (plugin.isDatabaseEnabled()) {
 	            PlayerStatsHandler playerStats = statsMap.get(winner.getUniqueId());
+                if (playerStats != null) {
 
-	            playerStats.setSoloGamesWon(playerStats.getSoloGamesWon() + 1);
+                    playerStats.setSoloGamesWon(playerStats.getSoloGamesWon() + 1);
 
-	            playerStats.setDirty();
+                    playerStats.setDirty();
+                }
             }
         }
 
@@ -454,13 +472,15 @@ public class GameSequenceHandler {
             
             runCustomPlayerCommands(true, world, winningTeam);
 
-            if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+            if (plugin.isDatabaseEnabled()) {
                 for (Player player : winningTeam) {
 	                PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                    if (playerStats != null) {
 
-	                playerStats.setTeamGamesWon(playerStats.getTeamGamesWon() + 1);
+                        playerStats.setTeamGamesWon(playerStats.getTeamGamesWon() + 1);
 
-	                playerStats.setDirty();
+                        playerStats.setDirty();
+                    }
                 }
             }
         }
@@ -546,6 +566,10 @@ public class GameSequenceHandler {
         }
         gameStarted.put(world.getName(), false);
         gameStarting.put(world.getName(), false);
+        spawnPointMap.computeIfAbsent(world.getName(), key -> new HashMap<>()).clear();
+        setSpawnHandler.playersWaiting.computeIfAbsent(world.getName(), key -> new ArrayList<>()).clear();
+        List<BukkitTask> autoStart = SetSpawnHandler.autoStartTasks.remove(world.getName());
+        if (autoStart != null) for (BukkitTask task : autoStart) task.cancel();
         deathmatchWorlds.remove(world.getName());
         matchSpawns.remove(world.getName());
         matchPlatforms.remove(world.getName());
@@ -561,13 +585,15 @@ public class GameSequenceHandler {
 				    int playerIndex = worldPlayerPlacements.indexOf(player);
 				    double percentile = worldPlayerPlacements.size() == 1 ? 100.0 : (1 - (playerIndex / (worldPlayerPlacements.size() - 1.0))) * 100.0;
 
-                    if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+                    if (plugin.isDatabaseEnabled()) {
 	                    PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                        if (playerStats != null) {
 
-	                    double netPercentile = (playerStats.getSoloPercentile() * playerStats.getSoloGamesPlayed() + percentile) / (playerStats.getSoloGamesPlayed() + 1);
-	                    playerStats.setSoloPercentile(netPercentile);
+                            double netPercentile = (playerStats.getSoloPercentile() * playerStats.getSoloGamesPlayed() + percentile) / (playerStats.getSoloGamesPlayed() + 1);
+                            playerStats.setSoloPercentile(netPercentile);
 
-	                    playerStats.setDirty();
+                            playerStats.setDirty();
+                        }
                     }
 			    }
 		    }
@@ -577,15 +603,17 @@ public class GameSequenceHandler {
 				    int teamIndex = worldTeamPlacements.indexOf(team);
 				    double percentile = worldTeamPlacements.size() == 1 ? 100.0 : (1 - (teamIndex / (worldTeamPlacements.size() - 1.0))) * 100.0;
 
-                    if (configHandler.getPluginSettings().getBoolean("database.enabled")) {
+                    if (plugin.isDatabaseEnabled()) {
                         for (Player player : team) {
 	                        PlayerStatsHandler playerStats = statsMap.get(player.getUniqueId());
+                            if (playerStats != null) {
 
-	                        double netPercentile = (playerStats.getTeamPercentile() * playerStats.getTeamGamesPlayed() + percentile) / (playerStats.getTeamGamesPlayed() + 1);
+                                double netPercentile = (playerStats.getTeamPercentile() * playerStats.getTeamGamesPlayed() + percentile) / (playerStats.getTeamGamesPlayed() + 1);
 
-	                        playerStats.setTeamPercentile(netPercentile);
+                                playerStats.setTeamPercentile(netPercentile);
 
-	                        playerStats.setDirty();
+                                playerStats.setDirty();
+                            }
                         }
                     }
 			    }
@@ -602,10 +630,9 @@ public class GameSequenceHandler {
             resetPlayerHandler.resetPlayer(player);
             removeBossBar(player);
             String lobbyWorldName = configHandler.getPluginSettings().getString("lobby-world");
-            assert lobbyWorldName != null;
-            World lobbyWorld = Bukkit.getWorld(lobbyWorldName);
-            assert lobbyWorld != null;
-            player.teleport(lobbyWorld.getSpawnLocation());
+            World lobbyWorld = lobbyWorldName == null ? null : Bukkit.getWorld(lobbyWorldName);
+            if (lobbyWorld != null) player.teleport(lobbyWorld.getSpawnLocation());
+            else plugin.getLogger().severe("Cannot return player to lobby: world is not loaded: " + lobbyWorldName);
             scoreBoardHandler.removeScoreboard(player);
 
             if (!disable && totalTimeSpent.containsKey(player)) {
@@ -673,6 +700,8 @@ public class GameSequenceHandler {
         worldPlayerKills.clear();
         worldStartingPlayers.clear();
         worldPlayerVotes.clear();
+        teamsAlive.remove(world.getName());
+        teams.remove(world.getName());
 
         signHandler.setSignContent();
 
@@ -728,7 +757,11 @@ public class GameSequenceHandler {
     }
 
     public static void removeBossBar(Player player) {
-        Map<Player, BossBar> worldPlayerBossBar = playerBossBars.computeIfAbsent(player.getWorld().getName(), k -> new HashMap<>());
+        removeBossBar(player, player.getWorld());
+    }
+
+    public static void removeBossBar(Player player, World world) {
+        Map<Player, BossBar> worldPlayerBossBar = playerBossBars.computeIfAbsent(world.getName(), k -> new HashMap<>());
 
         BossBar bossBar = worldPlayerBossBar.get(player);
         if (bossBar != null) {

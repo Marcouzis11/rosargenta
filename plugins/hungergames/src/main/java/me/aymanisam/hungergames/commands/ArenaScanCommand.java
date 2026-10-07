@@ -54,7 +54,7 @@ public class ArenaScanCommand implements CommandExecutor {
             return true;
         }
 
-        FileConfiguration config;
+        World world;
 
         if (player == null) {
             if (args.length != 1) {
@@ -67,25 +67,28 @@ public class ArenaScanCommand implements CommandExecutor {
                 plugin.getLogger().info("Loaded maps:" + plugin.getServer().getWorlds().stream().map(World::getName).collect(Collectors.joining(", ")));
                 return true;
             }
-            config = arenaHandler.getArenaConfig(plugin.getServer().getWorld(worldName));
+            world = plugin.getServer().getWorld(worldName);
         } else {
             if (!hgWorldNames.contains(player.getWorld().getName())) {
                 sender.sendMessage("§cEste mundo no es una arena de HG.");
                 return true;
             }
-            config = arenaHandler.getArenaConfig(player.getWorld());
+            world = player.getWorld();
+        }
+
+        if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
+        FileConfiguration config = arenaHandler.getArenaConfig(world);
+        if (config == null) {
+            sender.sendMessage("§cNo se pudo leer arena.yml. Revisá la consola del servidor.");
+            return true;
         }
 
         if (!config.isSet("region.pos1.x") || !config.isSet("region.pos1.y") || !config.isSet("region.pos1.z") || !config.isSet("region.pos2.x") || !config.isSet("region.pos2.y") || !config.isSet("region.pos2.z")) {
             sender.sendMessage(langHandler.getMessage(player, "scanarena.region-undef"));
             return true;
-        }
-
-        World world;
-        if (player == null) {
-            world = plugin.getServer().getWorld(args[0]);
-        } else {
-            world = player.getWorld();
         }
 
         if (world == null || HungerGames.isGameStartingOrStarted(world.getName()) || WorldResetHandler.busyWorlds.contains(world.getName())) {

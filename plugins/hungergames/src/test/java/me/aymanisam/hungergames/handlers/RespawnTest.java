@@ -58,7 +58,7 @@ class RespawnTest {
         when(player.getWorld()).thenReturn(arena);
         when(player.isOnline()).thenReturn(true);
         when(player.getInventory()).thenReturn(mock(PlayerInventory.class));
-        when(player.getAttribute(Attribute.GENERIC_MAX_HEALTH)).thenReturn(mock(AttributeInstance.class));
+        when(player.getAttribute(Attribute.MAX_HEALTH)).thenReturn(mock(AttributeInstance.class));
         event = mock(PlayerRespawnEvent.class);
         when(event.getPlayer()).thenReturn(player);
         listener = new PlayerListener(plugin, mock(LangHandler.class), mock(SetSpawnHandler.class));

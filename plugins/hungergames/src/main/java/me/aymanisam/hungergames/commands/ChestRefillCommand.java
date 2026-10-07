@@ -42,7 +42,7 @@ public class ChestRefillCommand implements CommandExecutor {
             return true;
         }
 
-        FileConfiguration ArenaConfig;
+        World world;
 
         if (player == null) {
             if (args.length != 1) {
@@ -55,19 +55,29 @@ public class ChestRefillCommand implements CommandExecutor {
                 plugin.getLogger().info("Loaded maps:" + plugin.getServer().getWorlds().stream().map(World::getName).collect(Collectors.joining(", ")));
                 return true;
             }
-            ArenaConfig = arenaHandler.getArenaConfig(plugin.getServer().getWorld(worldName));
+            world = plugin.getServer().getWorld(worldName);
         } else {
-            ArenaConfig = arenaHandler.getArenaConfig(player.getWorld());
+            world = player.getWorld();
+        }
+
+        if (world == null) {
+            sender.sendMessage("§cEl mundo no está cargado. Cargalo antes de ejecutar este comando.");
+            return true;
+        }
+        FileConfiguration ArenaConfig = arenaHandler.getArenaConfig(world);
+        if (ArenaConfig == null) {
+            sender.sendMessage("§cNo se pudo leer arena.yml. Revisá la consola del servidor.");
+            return true;
         }
 
         String worldName = ArenaConfig.getString("region.world");
 
-        if (worldName == null) {
+        if (!world.getName().equals(worldName)) {
             sender.sendMessage(langHandler.getMessage(player, "chestrefill.no-arena"));
             return true;
         }
 
-        chestRefillHandler.refillChests(plugin.getServer().getWorld(worldName));
+        chestRefillHandler.refillChests(world);
 
         return true;
     }
