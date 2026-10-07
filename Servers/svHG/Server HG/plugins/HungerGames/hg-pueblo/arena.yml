@@ -1,0 +1,10 @@
+region:
+  world: hg-pueblo
+  pos1:
+    x: 1850.0
+    y: -64
+    z: -151.0
+  pos2:
+    x: 2388.0
+    y: 319
+    z: -588.0

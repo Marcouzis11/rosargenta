@@ -1,0 +1,6 @@
+signs:
+- lobby,0.0,1.0,11.0,arena1
+- lobby,0.0,1.0,11.0,Pueblo
+slots:
+- arena1,mapahg
+- Pueblo,hg-pueblo
